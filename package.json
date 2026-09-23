@@ -1,0 +1,31 @@
+{
+  "name": "balanza-pos",
+  "version": "1.0.0",
+  "description": "Punto de venta con balanza serial para fiambreria",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "seed": "node scripts/seed.js",
+    "detect": "node scripts/detect-scale.js",
+    "ports": "node scripts/detect-scale.js --list",
+    "sondear": "node scripts/sondear-balanza.js",
+    "loopback": "node scripts/loopback.js",
+    "test-humo": "node scripts/test-humo.js",
+    "test-grupos": "node scripts/test-grupos.js",
+    "test-ui": "node scripts/test-ui.js",
+    "empaquetar": "node scripts/empaquetar.js",
+    "test-estaciones": "node scripts/test-estaciones.js",
+    "test-deploy": "node scripts/test-deploy.js",
+    "test": "node scripts/test-humo.js && node scripts/test-grupos.js && node scripts/test-estaciones.js && node scripts/test-deploy.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "express": "^4.21.2",
+    "serialport": "^12.0.0",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

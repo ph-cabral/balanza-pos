@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0f1419">
+<title>Balanza POS</title>
+<link rel="stylesheet" href="/css/app.css?v=5">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ============ Izquierda: balanza + grupos/productos ============ -->
+  <section class="izquierda">
+
+    <div class="peso-panel">
+      <div class="peso-valor">
+        <span class="peso-numero num sin-conexion" id="pesoNumero">0.000</span>
+        <span class="peso-unidad">kg</span>
+      </div>
+
+      <div class="peso-meta">
+        <div class="peso-fila" id="pesoFila" hidden>
+          <button type="button" class="chip chip-estacion" id="chipEstacion" hidden
+                  title="Cambiar la estación de este equipo"><span id="chipEstacionTexto">—</span><span class="chip-flecha">▾</span></button>
+          <span class="chip" id="chipEscaner" hidden></span>
+        </div>
+        <span class="chip mal" id="chipEstado"><span class="punto"></span><span id="chipTexto">Conectando…</span></span>
+        <span class="chip" id="chipPuerto" hidden></span>
+      </div>
+
+      <div class="peso-acciones" id="accionesSim" hidden>
+        <button class="btn chico" data-sim="250">250 g</button>
+        <button class="btn chico" data-sim="500">500 g</button>
+        <button class="btn chico" data-sim="0">Tara</button>
+      </div>
+    </div>
+
+    <div class="barra-busqueda">
+      <input class="buscador" id="buscador" type="search" inputmode="search"
+             placeholder="Buscar producto o escanear código…" autocomplete="off">
+      <button class="btn" id="btnLimpiarBusqueda">Limpiar</button>
+    </div>
+
+    <main class="escenario">
+
+      <!-- ---------- Pantalla base: los grupos ---------- -->
+      <section class="vista" id="vistaGrupos">
+        <div class="vista-cab">
+          <div class="vista-titulo">Grupos</div>
+          <div class="vista-ayuda" id="ayudaOrden">Mantené apretado un grupo para acomodarlos</div>
+          <div class="columnas" id="columnas" role="group" aria-label="Columnas">
+            <span class="columnas-rot">Columnas</span>
+            <button type="button" data-col="2">2</button>
+            <button type="button" data-col="3">3</button>
+            <button type="button" data-col="4">4</button>
+            <button type="button" data-col="auto">Auto</button>
+          </div>
+          <button class="btn chico" id="btnOrdenar">Ordenar</button>
+        </div>
+        <div class="grupos" id="grupos"></div>
+      </section>
+
+      <!-- ---------- Productos de un grupo / resultados de búsqueda ---------- -->
+      <section class="vista" id="vistaProductos" hidden>
+        <div class="vista-cab">
+          <button class="btn chico volver" id="btnVolver">‹ Grupos</button>
+          <div class="vista-titulo" id="tituloGrupo">—</div>
+        </div>
+        <div class="grilla" id="grilla"></div>
+      </section>
+
+      <!-- ---------- Confirmación: el carrito unos segundos ---------- -->
+      <section class="vista vista-confirma" id="vistaConfirma" hidden>
+        <div class="confirma-nuevo" id="confirmaNuevo">
+          <div class="confirma-tilde">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M20 6 9 17l-5-5"/>
+            </svg>
+          </div>
+          <div class="confirma-info">
+            <div class="confirma-nombre" id="confirmaNombre">—</div>
+            <div class="confirma-detalle num" id="confirmaDetalle">—</div>
+          </div>
+          <div class="confirma-subtotal num" id="confirmaSubtotal">—</div>
+        </div>
+
+        <div class="confirma-lista" id="confirmaLista"></div>
+
+        <div class="confirma-pie">
+          <div class="confirma-total">
+            <span>Total de la venta</span>
+            <span class="num" id="confirmaTotal">$ 0,00</span>
+          </div>
+          <button class="btn-seguir" id="btnSeguir">Seguir</button>
+        </div>
+
+        <div class="barra-tiempo"><i id="barraTiempo"></i></div>
+      </section>
+
+    </main>
+  </section>
+
+  <!-- ============ Derecha: carrito ============ -->
+  <!-- En celular / tablet parada el carrito es una hoja que se sube y se baja
+       arrastrando; en pantalla ancha es el panel fijo de la derecha. -->
+  <div class="hoja-fondo" id="hojaFondo"></div>
+  <aside class="derecha" id="hoja">
+
+    <div class="hoja-tiempo"><i id="hojaTiempo"></i></div>
+    <div class="hoja-asa" id="hojaAsa"><span></span></div>
+
+    <div class="carrito-cab" id="carritoCab">
+      <div>
+        <div class="carrito-titulo">Venta actual</div>
+        <div class="carrito-contador" id="carritoContador">Sin artículos</div>
+      </div>
+      <span class="total-mini num" id="totalMini">$ 0,00</span>
+      <a class="link-admin" href="/admin.html">Administrar</a>
+    </div>
+
+    <div class="carrito-lista" id="carritoLista">
+      <div class="carrito-vacio">
+        <div class="icono">🧺</div>
+        <div>Poné algo en la balanza<br>y elegí el producto</div>
+      </div>
+    </div>
+
+    <div class="carrito-pie">
+      <div class="total-fila">
+        <span class="total-label">TOTAL</span>
+        <span class="total-valor num" id="total">$ 0,00</span>
+      </div>
+      <button class="btn-cobrar" id="btnCobrar" disabled>
+        <!-- Caja registradora -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 21h18"/>
+          <path d="M4 21V12a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v9"/>
+          <path d="M7 11V7a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v4"/>
+          <path d="M9 15h2"/>
+          <path d="M13 15h2"/>
+          <path d="M9 18h6"/>
+        </svg>
+        <span id="btnCobrarTexto">Cerrar venta</span>
+      </button>
+    </div>
+  </aside>
+</div>
+
+<!-- Elegir la estación de este equipo (se recuerda en el navegador) -->
+<div class="selector-estacion" id="selectorEstacion" hidden>
+  <div class="selector-caja">
+    <div class="selector-titulo">¿En qué estación trabaja este equipo?</div>
+    <div class="selector-ayuda">Cada estación tiene su balanza y su escáner. Se recuerda en este
+      equipo; para cambiarla, tocá el nombre de la estación arriba del peso.</div>
+    <div class="selector-lista" id="selectorLista"></div>
+    <button type="button" class="btn" id="selectorCerrar" hidden>Cancelar</button>
+  </div>
+</div>
+
+<div class="avisos" id="avisos"></div>
+
+<script src="/js/scanner.js?v=5"></script>
+<script src="/js/pos.js?v=5"></script>
+</body>
+</html>

@@ -1,0 +1,804 @@
+/* Balanza POS - estilos
+   Pensado para tablet tactil: objetivos grandes, alto contraste, cero animacion
+   innecesaria (la PC que lo corre es modesta). */
+
+:root {
+  --fondo: #0f1419;
+  --panel: #171e26;
+  --panel-alto: #1e2732;
+  --borde: #2a3543;
+  --borde-suave: #212b36;
+
+  --texto: #e8eef5;
+  --texto-medio: #9aa9bb;
+  --texto-tenue: #6b7a8d;
+
+  --acento: #3ba776;
+  --acento-fuerte: #46c78d;
+  --aviso: #d99a2b;
+  --error: #d9534f;
+  --info: #4a90d9;
+
+  --radio: 12px;
+  --radio-chico: 8px;
+
+  --alto-toque: 64px;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--fondo);
+  color: var(--texto);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: none;
+}
+
+button { font-family: inherit; font-size: inherit; color: inherit; cursor: pointer; }
+input  { font-family: inherit; font-size: inherit; }
+
+.num { font-variant-numeric: tabular-nums; }
+
+/* ---------- Estructura ---------- */
+
+.app {
+  display: grid;
+  grid-template-columns: 1fr 420px;
+  height: 100vh;
+  height: 100dvh;
+}
+
+.izquierda {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid var(--borde);
+}
+
+.derecha {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  min-width: 0;
+}
+
+/* ---------- Panel de peso ---------- */
+
+.peso-panel {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 16px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--borde);
+}
+
+.peso-valor {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  line-height: 1;
+}
+
+.peso-numero {
+  font-size: 68px;
+  font-weight: 300;
+  letter-spacing: -2px;
+  transition: color .15s;
+}
+
+.peso-numero.estable { color: var(--acento-fuerte); }
+.peso-numero.inestable { color: var(--texto-medio); }
+.peso-numero.sin-conexion { color: var(--texto-tenue); }
+
+.peso-unidad { font-size: 24px; color: var(--texto-medio); font-weight: 500; }
+
+.peso-meta { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--panel-alto);
+  color: var(--texto-medio);
+  white-space: nowrap;
+}
+
+.chip .punto { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.chip.ok     { color: var(--acento-fuerte); }
+.chip.espera { color: var(--aviso); }
+.chip.mal    { color: var(--error); }
+
+.peso-acciones { display: flex; gap: 8px; }
+
+/* ---------- Estacion de trabajo ---------- */
+
+.peso-fila { display: flex; gap: 6px; flex-wrap: wrap; }
+.peso-fila[hidden] { display: none; }
+
+.chip-estacion {
+  border: 1px solid var(--borde);
+  color: var(--texto);
+  font-size: 14px;
+  padding: 5px 10px 5px 12px;
+}
+.chip-estacion .chip-flecha { color: var(--texto-tenue); font-size: 11px; }
+.chip-estacion:active { background: var(--borde); }
+
+.selector-estacion {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(8, 11, 15, .82);
+}
+.selector-estacion[hidden] { display: none; }
+
+.selector-caja {
+  width: min(560px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+}
+.selector-titulo { font-size: 22px; font-weight: 700; }
+.selector-ayuda { color: var(--texto-medio); font-size: 14px; line-height: 1.4; }
+.selector-lista { display: grid; gap: 10px; }
+
+.selector-opcion {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: var(--alto-toque);
+  padding: 14px 18px;
+  text-align: left;
+  background: var(--panel-alto);
+  border: 2px solid var(--borde);
+  border-radius: var(--radio);
+}
+.selector-opcion.actual { border-color: var(--acento); }
+.selector-opcion:active { background: var(--borde); }
+.selector-nombre { font-size: 20px; font-weight: 700; }
+.selector-equipos { font-size: 13px; color: var(--texto-medio); }
+
+/* ---------- Buscador y categorias ---------- */
+
+.barra-busqueda { display: flex; gap: 10px; padding: 14px 20px 10px; }
+
+.buscador {
+  flex: 1;
+  height: 52px;
+  padding: 0 16px;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  color: var(--texto);
+  outline: none;
+}
+.buscador:focus { border-color: var(--acento); }
+.buscador::placeholder { color: var(--texto-tenue); }
+
+/* ---------- Escenario: grupos / productos / carrito ---------- */
+
+/* Las tres pantallas ocupan el mismo lugar; solo una esta visible. */
+.escenario { flex: 1; min-height: 0; display: flex; }
+
+.vista { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.vista[hidden] { display: none; }
+
+.vista-cab {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 20px 12px;
+  min-height: 44px;
+}
+.vista-titulo { font-size: 17px; font-weight: 700; }
+.vista-ayuda {
+  flex: 1;
+  font-size: 13px;
+  color: var(--texto-tenue);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.btn.volver { padding: 0 14px; }
+.btn.activo { background: var(--acento); border-color: var(--acento); color: #06140e; }
+
+/* ---------- Grupos (pantalla base) ---------- */
+
+.grupos {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px;
+  padding: 0 20px 20px;
+  align-content: start;
+  -webkit-overflow-scrolling: touch;
+}
+
+.grupo {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 4px;
+  min-height: 118px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-left: 4px solid var(--acento);
+  border-radius: var(--radio);
+  text-align: left;
+  transition: transform .06s, border-color .12s;
+}
+.grupo:active { transform: scale(.97); border-color: var(--acento); }
+
+.grupo-icono {
+  font-size: 34px;
+  line-height: 1;
+  margin-bottom: auto;   /* el icono arriba, nombre y cantidad abajo */
+  padding-bottom: 8px;
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+}
+.grupo-nombre { font-size: 20px; font-weight: 700; line-height: 1.2; overflow-wrap: break-word; }
+
+/* Con pocas columnas los botones quedan anchos: se agrandan un poco para que
+   sigan siendo proporcionados y faciles de tocar. */
+.grupos[data-columnas="2"] .grupo,
+.grupos[data-columnas="3"] .grupo { min-height: 132px; }
+.grupos[data-columnas="2"] .grupo-icono { font-size: 44px; }
+.grupos[data-columnas="2"] .grupo-nombre { font-size: 22px; }
+
+/* Selector de columnas (2 / 3 / 4 / Auto) en la cabecera de grupos */
+.columnas {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-chico);
+  background: var(--panel);
+}
+.columnas-rot { font-size: 12px; color: var(--texto-tenue); padding: 0 6px 0 8px; }
+.columnas button {
+  min-width: 36px;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--texto-medio);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.columnas button.activo { background: var(--acento); color: #06140e; }
+.grupo-cuenta { font-size: 13px; color: var(--texto-tenue); font-weight: 600; }
+
+/* Modo ordenar: los grupos se arrastran, por eso dejan de tomar el gesto de
+   scroll. Sin esto la tablet corta el arrastre apenas se mueve el dedo. */
+.grupos.ordenando .grupo { touch-action: none; }
+.grupos.ordenando .grupo:not(.hueco) { animation: temblor .9s ease-in-out infinite; }
+
+.grupo.arrastrando {
+  z-index: 60;
+  opacity: .96;
+  border-color: var(--acento);
+  box-shadow: 0 18px 40px rgba(0,0,0,.5);
+  animation: none;
+}
+
+.grupo.hueco {
+  background: transparent;
+  border: 2px dashed var(--borde);
+  border-left: 2px dashed var(--borde);
+}
+
+@keyframes temblor {
+  0%, 100% { transform: rotate(-.5deg); }
+  50%      { transform: rotate(.5deg); }
+}
+
+/* ---------- Grilla de productos ---------- */
+
+.grilla {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 10px;
+  padding: 0 20px 20px;
+  align-content: start;
+  -webkit-overflow-scrolling: touch;
+}
+
+.prod {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 116px;
+  padding: 14px;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  text-align: left;
+  transition: transform .06s, border-color .12s;
+}
+.prod:active { transform: scale(.97); border-color: var(--acento); }
+
+.prod-nombre { font-weight: 600; font-size: 15px; line-height: 1.3; }
+.prod-marca  { font-size: 13px; color: var(--texto-tenue); margin-top: 2px; }
+
+.prod-pie { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.prod-precio { font-size: 17px; font-weight: 600; color: var(--acento-fuerte); }
+.prod-unidad { font-size: 12px; color: var(--texto-tenue); font-weight: 600; }
+
+.vacio { grid-column: 1/-1; padding: 48px 16px; text-align: center; color: var(--texto-tenue); }
+
+/* ---------- Confirmacion: el carrito unos segundos ---------- */
+
+.vista-confirma { gap: 14px; padding: 0 20px 20px; }
+
+.confirma-nuevo {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-left: 4px solid var(--acento);
+  border-radius: var(--radio);
+}
+
+.confirma-tilde {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(70, 199, 141, .14);
+  color: var(--acento-fuerte);
+}
+.confirma-tilde svg { width: 24px; height: 24px; }
+
+.confirma-info { flex: 1; min-width: 0; }
+.confirma-nombre {
+  font-size: 20px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.confirma-detalle { font-size: 14px; color: var(--texto-medio); margin-top: 3px; }
+.confirma-subtotal { font-size: 26px; font-weight: 700; color: var(--acento-fuerte); white-space: nowrap; }
+
+.confirma-lista {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.confirma-fila {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: baseline;
+  gap: 14px;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--borde-suave);
+  border-radius: var(--radio-chico);
+}
+.confirma-titulo {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  color: var(--texto-tenue);
+}
+.confirma-fila-nombre {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.confirma-fila-detalle { font-size: 13px; color: var(--texto-tenue); }
+.confirma-fila-subtotal { font-weight: 600; min-width: 96px; text-align: right; }
+
+.confirma-pie { display: flex; align-items: center; gap: 16px; }
+.confirma-total {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 15px;
+  color: var(--texto-medio);
+  font-weight: 600;
+}
+.confirma-total .num { font-size: 30px; font-weight: 700; color: var(--texto); }
+
+.btn-seguir {
+  height: 58px;
+  min-width: 190px;
+  padding: 0 24px;
+  background: var(--acento);
+  border: none;
+  border-radius: var(--radio);
+  color: #06140e;
+  font-size: 17px;
+  font-weight: 700;
+}
+.btn-seguir:active { transform: scale(.985); }
+
+.barra-tiempo {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--borde-suave);
+  overflow: hidden;
+}
+.barra-tiempo i { display: block; height: 100%; width: 100%; background: var(--acento); }
+
+/* ---------- Carrito ---------- */
+
+.carrito-cab {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--borde-suave);
+}
+.carrito-titulo { font-size: 17px; font-weight: 600; }
+.carrito-contador { font-size: 13px; color: var(--texto-tenue); }
+
+.carrito-lista {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 14px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.carrito-vacio {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--texto-tenue);
+  text-align: center;
+  padding: 24px;
+}
+.carrito-vacio .icono { font-size: 40px; opacity: .45; }
+
+/* Contenedor del swipe: la capa roja queda debajo del item. */
+.item-wrap {
+  position: relative;
+  margin-bottom: 8px;
+  border-radius: var(--radio);
+  overflow: hidden;
+  background: var(--error);
+}
+
+.item-wrap .fondo-borrar {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 22px;
+  font-weight: 700;
+  font-size: 14px;
+  color: #fff;
+  pointer-events: none;
+}
+
+.item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--panel-alto);
+  border-radius: var(--radio);
+  touch-action: pan-y;
+  will-change: transform;
+}
+
+.item-info { flex: 1; min-width: 0; }
+.item-nombre {
+  font-weight: 600;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.item-detalle {
+  font-size: 13px;
+  color: var(--texto-tenue);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.item-subtotal { font-size: 16px; font-weight: 600; white-space: nowrap; }
+
+.cant-ctrl { display: flex; align-items: center; gap: 2px; }
+.cant-btn {
+  width: 34px; height: 34px;
+  display: grid; place-items: center;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-chico);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--texto-medio);
+}
+.cant-btn:active { background: var(--borde); }
+.cant-valor { min-width: 30px; text-align: center; font-weight: 700; }
+
+/* ---------- Pie: total y cierre ---------- */
+
+.carrito-pie { border-top: 1px solid var(--borde); padding: 16px 20px 20px; }
+
+.total-fila {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.total-label { font-size: 15px; color: var(--texto-medio); font-weight: 600; }
+.total-valor { font-size: 40px; font-weight: 700; letter-spacing: -1px; }
+
+.btn-cobrar {
+  width: 100%;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--acento);
+  border: none;
+  border-radius: var(--radio);
+  color: #06140e;
+  font-size: 20px;
+  font-weight: 700;
+  transition: transform .06s, opacity .12s;
+}
+.btn-cobrar:active { transform: scale(.985); }
+.btn-cobrar:disabled { background: var(--panel-alto); color: var(--texto-tenue); }
+.btn-cobrar svg { width: 28px; height: 28px; }
+
+/* ---------- Botones genericos ---------- */
+
+.btn {
+  height: 44px;
+  padding: 0 16px;
+  background: var(--panel-alto);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-chico);
+  color: var(--texto-medio);
+  font-weight: 600;
+  font-size: 14px;
+}
+.btn:active { background: var(--borde); }
+.btn.chico { height: 36px; padding: 0 12px; font-size: 13px; }
+
+/* ---------- Avisos ---------- */
+
+/* Se anclan abajo a la izquierda para no taparle el boton de cerrar venta. */
+.avisos {
+  position: fixed;
+  left: 20px;
+  bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  z-index: 50;
+  pointer-events: none;
+  width: min(520px, calc(100vw - 40px));
+}
+
+.aviso {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 18px;
+  background: var(--panel-alto);
+  border: 1px solid var(--borde);
+  border-left: 4px solid var(--info);
+  border-radius: var(--radio);
+  box-shadow: 0 12px 32px rgba(0,0,0,.45);
+  pointer-events: auto;
+  animation: subir .16s ease-out;
+}
+.aviso.ok     { border-left-color: var(--acento); }
+.aviso.error  { border-left-color: var(--error); }
+.aviso.atencion { border-left-color: var(--aviso); }
+.aviso-texto { flex: 1; font-size: 15px; }
+.aviso-accion {
+  padding: 8px 14px;
+  background: var(--acento);
+  border: none;
+  border-radius: var(--radio-chico);
+  color: #06140e;
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+@keyframes subir { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+
+/* ---------- Encabezado derecho ---------- */
+
+.link-admin {
+  font-size: 13px;
+  color: var(--texto-tenue);
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: var(--radio-chico);
+}
+.link-admin:active { background: var(--panel-alto); }
+
+/* ---------- Pantallas angostas / vertical ---------- */
+
+/* Piezas de la hoja deslizable: solo existen en pantallas angostas. */
+.hoja-fondo, .hoja-asa, .hoja-tiempo, .total-mini { display: none; }
+
+@media (max-width: 900px) {
+  /* En vertical el carrito queda abajo, asi que los avisos van arriba. */
+  .avisos { top: 16px; bottom: auto; left: 16px; width: calc(100vw - 32px); }
+
+  .app { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+  /* Lo que asoma de la hoja cerrada no tiene que tapar los ultimos grupos. */
+  .izquierda { border-right: none; min-height: 0; padding-bottom: var(--hoja-asomo, 80px); }
+
+  /* ----- Carrito como hoja: asoma abajo, se sube y se baja arrastrando ----- */
+  .derecha {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    height: 84vh;
+    height: 84dvh;
+    border: 1px solid var(--borde);
+    border-bottom: none;
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -10px 34px rgba(0,0,0,.55);
+    overflow: hidden;
+    transform: translateY(calc(100% - var(--hoja-asomo, 80px)));
+    transition: transform .3s cubic-bezier(.2,.8,.2,1);
+    will-change: transform;
+  }
+  .derecha.abierta { transform: translateY(0); }
+  .derecha.arrastrando { transition: none; }
+
+  .hoja-fondo {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 39;
+    background: rgba(0,0,0,.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .3s;
+  }
+  .hoja-fondo.visible { opacity: 1; pointer-events: auto; }
+  .hoja-fondo.arrastrando { transition: none; }
+
+  /* La manija y la cabecera toman el gesto: el navegador no debe scrollear. */
+  .hoja-asa {
+    display: flex;
+    justify-content: center;
+    padding: 10px 0 4px;
+    touch-action: none;
+    cursor: grab;
+  }
+  .hoja-asa span { width: 44px; height: 5px; border-radius: 999px; background: var(--borde); }
+
+  .carrito-cab {
+    gap: 12px;
+    padding: 4px 16px 12px;
+    touch-action: none;
+    cursor: grab;
+  }
+  .carrito-cab > div:first-child { flex: 1; min-width: 0; }
+  .total-mini {
+    display: block;
+    font-size: 22px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .carrito-titulo, .carrito-contador { white-space: nowrap; }
+  /* Cerrada muestra el total; abierta, el acceso a Administrar (el total ya
+     esta abajo en grande). Ocupan el mismo lugar para que la cabecera no
+     cambie de alto. */
+  .derecha.abierta .total-mini { display: none; }
+  .derecha:not(.abierta) .link-admin { display: none; }
+
+  /* Cuenta regresiva de la subida automatica, pegada al borde de arriba. */
+  .hoja-tiempo {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 20px;
+    right: 20px;
+    height: 3px;
+    overflow: hidden;
+    border-radius: 0 0 3px 3px;
+  }
+  .hoja-tiempo i { display: block; height: 100%; width: 0; background: var(--acento); }
+
+  .carrito-lista { overscroll-behavior: contain; }
+  .carrito-pie { padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+
+  /* El articulo recien cargado se destaca un momento. */
+  .item-wrap.nuevo .item { animation: destacar 1.6s ease-out; }
+
+  /* Peso: si no entra todo en una linea, los botones bajan en vez de pisarse. */
+  .peso-panel { flex-wrap: wrap; gap: 8px 14px; padding: 12px 16px; }
+  .peso-meta { flex: 1 0 auto; min-width: auto; }
+  .peso-acciones { margin-left: auto; }
+  .barra-busqueda { padding: 12px 16px 8px; }
+  .vista-cab { padding: 4px 16px 10px; }
+  .grupos, .grilla { padding: 0 16px 16px; }
+
+  .peso-numero { font-size: 52px; }
+  .total-valor { font-size: 32px; }
+  .btn-cobrar { height: 62px; }
+
+  /* En vertical entran menos grupos por fila y el pie de la confirmacion se
+     apila para que el boton siga siendo grande. */
+  .grupos { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .grupo { min-height: 96px; padding: 13px; }
+  .grupo-nombre { font-size: 17px; }
+  .grupo-icono { font-size: 28px; padding-bottom: 6px; }
+  .grupos[data-columnas="2"] .grupo { min-height: 116px; }
+  .grupos[data-columnas="2"] .grupo-icono { font-size: 36px; }
+  .grupos[data-columnas="2"] .grupo-nombre { font-size: 19px; }
+  .grupos[data-columnas="3"] .grupo { min-height: 104px; padding: 11px; }
+  .grupos[data-columnas="3"] .grupo-nombre { font-size: 15px; }
+  .grupos[data-columnas="4"] .grupo { padding: 9px; }
+  .grupos[data-columnas="4"] .grupo-nombre { font-size: 13px; }
+  .grupos[data-columnas="4"] .grupo-icono { font-size: 24px; }
+  .grupos[data-columnas="4"] .grupo-cuenta { font-size: 11px; }
+  /* En el celular no entra el rotulo: quedan solo los numeros */
+  .columnas-rot { display: none; }
+  .vista-ayuda { display: none; }
+  .columnas { margin-left: auto; }
+  .columnas button { min-width: 30px; padding: 0 6px; }
+  .confirma-pie { flex-direction: column; align-items: stretch; gap: 10px; }
+  .btn-seguir { width: 100%; }
+  .confirma-subtotal { font-size: 22px; }
+}
+
+@keyframes destacar {
+  0%   { background: #245440; }
+  100% { background: var(--panel-alto); }
+}

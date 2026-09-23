@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fiambrería</title>
+  <style>
+    :root {
+      --azul: #4285f4;
+      --verde: #1e8e3e;
+      --rojo: #d93025;
+      --gris-bg: #f4f5f7;
+      --gris-borde: #e0e0e0;
+      --gris-texto: #5f6368;
+      --texto: #202124;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      background: var(--gris-bg);
+      color: var(--texto);
+    }
+    .view { display: none; padding: 16px; max-width: 720px; margin: 0 auto; }
+    .view.active { display: block; }
+
+    /* Inicio */
+    #view-inicio { text-align: center; padding-top: 48px; }
+    #view-inicio h1 { font-size: 28px; margin-bottom: 32px; }
+    .menu-grid { display: flex; flex-direction: column; gap: 14px; }
+    .menu-btn {
+      padding: 20px;
+      font-size: 18px;
+      font-weight: 600;
+      border: none;
+      border-radius: 14px;
+      background: white;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+      cursor: pointer;
+      color: var(--texto);
+    }
+    .menu-btn:active { background: var(--gris-bg); }
+
+    /* Header de vistas internas */
+    .view-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .view-header h2 { margin: 0; font-size: 20px; }
+    .back-btn {
+      border: none;
+      background: white;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    /* Cards genéricas */
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+      margin-bottom: 16px;
+    }
+    .card h3 { margin-top: 0; }
+
+    /* Configuración */
+    .add-row { display: flex; gap: 8px; margin-bottom: 14px; }
+    .add-row input {
+      flex: 1;
+      padding: 10px 12px;
+      border: 1px solid var(--gris-borde);
+      border-radius: 8px;
+      font-size: 15px;
+    }
+    .add-row button, .filtros button {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      background: var(--azul);
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .add-row button:disabled { opacity: 0.6; cursor: default; }
+    .proveedores-list { list-style: none; padding: 0; margin: 0; }
+    .proveedores-list li {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 4px;
+      border-bottom: 1px solid var(--gris-borde);
+    }
+    .proveedores-list li:last-child { border-bottom: none; }
+    .btn-eliminar {
+      border: none;
+      background: none;
+      color: var(--rojo);
+      font-size: 18px;
+      cursor: pointer;
+      padding: 4px 8px;
+    }
+
+    /* Filtros de fecha */
+    .filtros {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: end;
+      background: white;
+      border-radius: 12px;
+      padding: 14px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+      margin-bottom: 16px;
+    }
+    .filtros label {
+      display: flex;
+      flex-direction: column;
+      font-size: 12px;
+      color: var(--gris-texto);
+      gap: 4px;
+    }
+    .filtros input[type="date"] {
+      padding: 8px;
+      border: 1px solid var(--gris-borde);
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    /* Resumen */
+    .resumen {
+      background: white;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+      margin-bottom: 16px;
+    }
+    .resumen-fecha {
+      font-size: 13px;
+      color: var(--gris-texto);
+      margin-bottom: 10px;
+      text-transform: capitalize;
+    }
+    .resumen-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .resumen-card {
+      background: var(--gris-bg);
+      border-radius: 10px;
+      padding: 10px;
+      text-align: center;
+    }
+    .resumen-card span { display: block; font-size: 11px; color: var(--gris-texto); margin-bottom: 4px; }
+    .resumen-card strong { font-size: 16px; }
+    .resumen-card.ingreso strong { color: var(--verde); }
+    .resumen-card.gasto strong { color: var(--rojo); }
+    .resumen-card.saldo strong { color: var(--azul); }
+
+    /* Acordeón */
+    .acordeon-item {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .acordeon-header {
+      width: 100%;
+      text-align: left;
+      padding: 14px 16px;
+      border: none;
+      background: white;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .acordeon-header .chevron { transition: transform 0.2s; }
+    .acordeon-item.collapsed .chevron { transform: rotate(-90deg); }
+    .acordeon-body { max-height: 2000px; overflow: auto; transition: max-height 0.2s ease; }
+    .acordeon-item.collapsed .acordeon-body { max-height: 0; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    thead th {
+      text-align: left;
+      padding: 8px 16px;
+      background: var(--gris-bg);
+      color: var(--gris-texto);
+      font-size: 12px;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    thead th.ordenable::after { content: ' ⇅'; opacity: 0.5; }
+    tbody td { padding: 8px 16px; border-top: 1px solid var(--gris-borde); }
+    tbody tr:hover { background: #fafafa; }
+    .monto-ingreso { color: var(--verde); font-weight: 600; }
+    .monto-gasto { color: var(--rojo); font-weight: 600; }
+    .pill {
+      display: inline-block;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: #e6f4ea;
+      color: var(--verde);
+    }
+    .pill.pendiente { background: #fce8e6; color: var(--rojo); }
+    .vacio, .loading { padding: 20px; text-align: center; color: var(--gris-texto); font-size: 13px; }
+
+    /* Gráficos */
+    .chart-wrap { background: white; border-radius: 12px; padding: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); margin-bottom: 16px; }
+    .subtitulo-grafico { font-size: 13px; font-weight: 600; color: var(--gris-texto); margin: 4px 2px 8px; }
+    .meses-selector { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+    .mes-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 16px;
+      background: var(--gris-bg);
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .mes-chip input { margin: 0; }
+    .mes-chip.activo { background: var(--azul); color: white; }
+
+    /* Semáforo hoy vs meta/promedio */
+    .semaforo-card {
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+      background: var(--gris-bg);
+      transition: background 0.2s;
+    }
+    .semaforo-card.verde { background: #e6f4ea; }
+    .semaforo-card.amarillo { background: #fef7e0; }
+    .semaforo-card.rojo { background: #fce8e6; }
+    .semaforo-estado { font-size: 15px; font-weight: 700; margin-bottom: 12px; }
+    .semaforo-cifras, .semaforo-cifras-2 { display: grid; gap: 10px; margin-bottom: 14px; }
+    .semaforo-cifras { grid-template-columns: repeat(3, 1fr); }
+    .semaforo-cifras-2 { grid-template-columns: repeat(2, 1fr); }
+    .semaforo-cifras div, .semaforo-cifras-2 div { text-align: center; }
+    .semaforo-cifras span, .semaforo-cifras-2 span { display: block; font-size: 11px; color: var(--gris-texto); margin-bottom: 4px; }
+    .semaforo-cifras strong, .semaforo-cifras-2 strong { font-size: 15px; }
+    .semaforo-meta-input { display: flex; gap: 8px; align-items: end; }
+    .semaforo-meta-input label { display: flex; flex-direction: column; font-size: 12px; color: var(--gris-texto); gap: 4px; flex: 1; }
+    .semaforo-meta-input input {
+      padding: 8px;
+      border: 1px solid var(--gris-borde);
+      border-radius: 8px;
+      font-size: 14px;
+      width: 100%;
+    }
+    .semaforo-meta-input button {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 8px;
+      background: var(--azul);
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <section id="view-inicio" class="view active">
+    <h1>🥪 Fiambrería</h1>
+    <div class="menu-grid">
+      <button class="menu-btn" data-view="configuracion">⚙️ Configuración</button>
+      <button class="menu-btn" data-view="movimientos">📊 Movimientos</button>
+      <button class="menu-btn" data-view="graficos">📈 Gráficos</button>
+    </div>
+  </section>
+
+  <section id="view-configuracion" class="view">
+    <div class="view-header">
+      <button class="back-btn" data-view="inicio">← Volver</button>
+      <h2>⚙️ Configuración</h2>
+    </div>
+    <div class="card">
+      <h3>Proveedores</h3>
+      <div class="add-row">
+        <input type="text" id="nuevoProveedor" placeholder="Nombre del proveedor">
+        <button id="btnAgregarProveedor">Agregar</button>
+      </div>
+      <ul class="proveedores-list" id="listaProveedores">
+        <li class="vacio">Cargando…</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="view-movimientos" class="view">
+    <div class="view-header">
+      <button class="back-btn" data-view="inicio">← Volver</button>
+      <h2>📊 Movimientos</h2>
+    </div>
+
+    <div class="filtros">
+      <label>Desde <input type="date" id="fechaDesde"></label>
+      <label>Hasta <input type="date" id="fechaHasta"></label>
+      <button id="btnFiltrar">Filtrar</button>
+    </div>
+
+    <div class="resumen">
+      <div class="resumen-fecha" id="resumenFecha">—</div>
+      <div class="resumen-cards">
+        <div class="resumen-card ingreso"><span>Ingresado</span><strong id="totalIngresado">$0</strong></div>
+        <div class="resumen-card gasto"><span>Gastado</span><strong id="totalGastado">$0</strong></div>
+        <div class="resumen-card saldo"><span>Queda</span><strong id="totalQueda">$0</strong></div>
+      </div>
+    </div>
+
+    <div class="acordeon-item" id="acordeonIngresos">
+      <button class="acordeon-header" data-toggle="acordeonIngresos">
+        <span>💰 Ingresos (<span id="countIngresos">0</span>)</span>
+        <span class="chevron">▾</span>
+      </button>
+      <div class="acordeon-body">
+        <table>
+          <thead>
+            <tr>
+              <th class="ordenable" data-sort="hora" data-tabla="ingresos">Hora</th>
+              <th class="ordenable" data-sort="monto" data-tabla="ingresos">Monto</th>
+            </tr>
+          </thead>
+          <tbody id="bodyIngresos"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="acordeon-item" id="acordeonGastos">
+      <button class="acordeon-header" data-toggle="acordeonGastos">
+        <span>💸 Gastos (<span id="countGastos">0</span>)</span>
+        <span class="chevron">▾</span>
+      </button>
+      <div class="acordeon-body">
+        <table>
+          <thead>
+            <tr>
+              <th class="ordenable" data-sort="hora" data-tabla="gastos">Hora</th>
+              <th>Detalle</th>
+              <th class="ordenable" data-sort="monto" data-tabla="gastos">Monto</th>
+              <th>Pagado</th>
+            </tr>
+          </thead>
+          <tbody id="bodyGastos"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="view-graficos" class="view">
+    <div class="view-header">
+      <button class="back-btn" data-view="inicio">← Volver</button>
+      <h2>📈 Gráficos</h2>
+    </div>
+
+    <div class="semaforo-card" id="semaforoCard">
+      <div class="semaforo-estado" id="semaforoEstado">Cargando…</div>
+      <div class="semaforo-cifras">
+        <div><span>Hoy</span><strong id="semHoy">$0</strong></div>
+        <div><span>Promedio</span><strong id="semPromedio">$0</strong></div>
+        <div><span>Meta</span><strong id="semMeta">—</strong></div>
+      </div>
+      <div class="semaforo-cifras-2">
+        <div><span>Mes</span><strong id="semMes">$0</strong></div>
+        <div><span>Año</span><strong id="semAnio">$0</strong></div>
+      </div>
+      <div class="semaforo-meta-input">
+        <label>Meta de hoy <input type="number" id="inputMeta" placeholder="ej: 700000"></label>
+        <button id="btnGuardarMeta">Guardar</button>
+      </div>
+    </div>
+
+    <div class="subtitulo-grafico">📅 Ingreso y gasto por día</div>
+    <div class="filtros">
+      <label>Desde <input type="date" id="gFechaDesde"></label>
+      <label>Hasta <input type="date" id="gFechaHasta"></label>
+      <button id="btnFiltrarGrafico">Ver</button>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="chartIngresosGastos" height="220"></canvas>
+    </div>
+
+    <div class="subtitulo-grafico">⏱️ Ingreso por franja de 30 min</div>
+    <div class="filtros">
+      <label>Día <input type="date" id="ghFecha"></label>
+      <button id="btnFiltrarGraficoHora">Ver</button>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="chartIngresoHora" height="220"></canvas>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="chartTicketPromedio" height="160"></canvas>
+    </div>
+
+    <div class="subtitulo-grafico">🏭 Gasto por proveedor</div>
+    <div class="filtros">
+      <div class="meses-selector" id="listaMeses"><span class="vacio">Cargando meses…</span></div>
+      <button id="btnFiltrarGraficoProveedor">Ver</button>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="chartGastoProveedor" height="260"></canvas>
+    </div>
+  </section>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script>
+    // ---------- Utilidades ----------
+    function formatearNumero(num) {
+      return Math.round(num).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    }
+
+    function hoyStr() {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return y + '-' + m + '-' + day;
+    }
+
+    function formatearFechaLarga(fechaStr) {
+      const partes = fechaStr.split('-');
+      const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+      return parseInt(partes[2], 10) + ' de ' + meses[parseInt(partes[1], 10) - 1] + ' de ' + partes[0];
+    }
+
+    // ---------- Navegación ----------
+    document.querySelectorAll('[data-view]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        mostrarVista(btn.getAttribute('data-view'));
+      });
+    });
+
+    function mostrarVista(nombre) {
+      document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('active'); });
+      document.getElementById('view-' + nombre).classList.add('active');
+      if (nombre === 'configuracion') cargarProveedores();
+      if (nombre === 'movimientos') cargarMovimientos();
+      if (nombre === 'graficos') cargarGrafico();
+    }
+
+    // ---------- Configuración: proveedores ----------
+    function cargarProveedores() {
+      const lista = document.getElementById('listaProveedores');
+      lista.innerHTML = '<li class="vacio">Cargando…</li>';
+      google.script.run
+        .withSuccessHandler(pintarProveedores)
+        .withFailureHandler(function (err) { lista.innerHTML = '<li class="vacio">Error: ' + err.message + '</li>'; })
+        .getProveedores();
+    }
+
+    function pintarProveedores(proveedores) {
+      const lista = document.getElementById('listaProveedores');
+      if (!proveedores.length) {
+        lista.innerHTML = '<li class="vacio">No hay proveedores cargados</li>';
+        return;
+      }
+      lista.innerHTML = '';
+      proveedores.forEach(function (p) {
+        const li = document.createElement('li');
+        const span = document.createElement('span');
+        span.textContent = p;
+        const btn = document.createElement('button');
+        btn.className = 'btn-eliminar';
+        btn.textContent = '✕';
+        btn.addEventListener('click', function () { eliminarProveedorUI(p); });
+        li.appendChild(span);
+        li.appendChild(btn);
+        lista.appendChild(li);
+      });
+    }
+
+    document.getElementById('btnAgregarProveedor').addEventListener('click', function () {
+      const input = document.getElementById('nuevoProveedor');
+      const nombre = input.value.trim();
+      if (!nombre) return;
+      const boton = document.getElementById('btnAgregarProveedor');
+      boton.disabled = true;
+      google.script.run
+        .withSuccessHandler(function (proveedores) {
+          boton.disabled = false;
+          input.value = '';
+          pintarProveedores(proveedores);
+        })
+        .withFailureHandler(function (err) {
+          boton.disabled = false;
+          alert(err.message);
+        })
+        .agregarProveedor(nombre);
+    });
+
+    document.getElementById('nuevoProveedor').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') document.getElementById('btnAgregarProveedor').click();
+    });
+
+    function eliminarProveedorUI(nombre) {
+      if (!confirm('¿Eliminar "' + nombre + '"?')) return;
+      google.script.run
+        .withSuccessHandler(pintarProveedores)
+        .withFailureHandler(function (err) { alert(err.message); })
+        .eliminarProveedor(nombre);
+    }
+
+    // ---------- Movimientos ----------
+    var movimientosActuales = { ingresos: [], gastos: [] };
+    var ordenIngresos = { campo: 'hora', asc: true };
+    var ordenGastos = { campo: 'hora', asc: true };
+
+    function cargarMovimientos() {
+      if (!document.getElementById('fechaDesde').value) {
+        document.getElementById('fechaDesde').value = hoyStr();
+        document.getElementById('fechaHasta').value = hoyStr();
+      }
+      consultarMovimientos();
+    }
+
+    document.getElementById('btnFiltrar').addEventListener('click', consultarMovimientos);
+
+    function consultarMovimientos() {
+      const desde = document.getElementById('fechaDesde').value || hoyStr();
+      const hasta = document.getElementById('fechaHasta').value || desde;
+      document.getElementById('bodyIngresos').innerHTML = '<tr><td colspan="2" class="loading">Cargando…</td></tr>';
+      document.getElementById('bodyGastos').innerHTML = '<tr><td colspan="4" class="loading">Cargando…</td></tr>';
+
+      google.script.run
+        .withSuccessHandler(pintarMovimientos)
+        .withFailureHandler(function (err) { alert('Error: ' + err.message); })
+        .getMovimientos(desde, hasta);
+    }
+
+    function pintarMovimientos(data) {
+      movimientosActuales = data;
+
+      document.getElementById('resumenFecha').textContent =
+        data.fechaInicio === data.fechaFin
+          ? formatearFechaLarga(data.fechaInicio)
+          : formatearFechaLarga(data.fechaInicio) + ' — ' + formatearFechaLarga(data.fechaFin);
+
+      document.getElementById('totalIngresado').textContent = '$' + formatearNumero(data.totalIngresado);
+      document.getElementById('totalGastado').textContent = '$' + formatearNumero(data.totalGastado);
+      document.getElementById('totalQueda').textContent = '$' + formatearNumero(data.queda);
+
+      document.getElementById('countIngresos').textContent = data.ingresos.length;
+      document.getElementById('countGastos').textContent = data.gastos.length;
+
+      renderizarIngresos();
+      renderizarGastos();
+    }
+
+    function ordenar(lista, orden) {
+      const copia = lista.slice();
+      copia.sort(function (a, b) {
+        let r;
+        if (orden.campo === 'monto') r = a.monto - b.monto;
+        else r = String(a[orden.campo]).localeCompare(String(b[orden.campo]));
+        return orden.asc ? r : -r;
+      });
+      return copia;
+    }
+
+    function renderizarIngresos() {
+      const body = document.getElementById('bodyIngresos');
+      const filas = ordenar(movimientosActuales.ingresos, ordenIngresos);
+      if (!filas.length) {
+        body.innerHTML = '<tr><td colspan="2" class="vacio">Sin ingresos en el rango elegido</td></tr>';
+        return;
+      }
+      body.innerHTML = filas.map(function (f) {
+        return '<tr><td>' + f.hora + '</td><td class="monto-ingreso">+$' + formatearNumero(f.monto) + '</td></tr>';
+      }).join('');
+    }
+
+    function renderizarGastos() {
+      const body = document.getElementById('bodyGastos');
+      const filas = ordenar(movimientosActuales.gastos, ordenGastos);
+      if (!filas.length) {
+        body.innerHTML = '<tr><td colspan="4" class="vacio">Sin gastos en el rango elegido</td></tr>';
+        return;
+      }
+      body.innerHTML = filas.map(function (f) {
+        const pill = f.pagado ? '<span class="pill">Sí</span>' : '<span class="pill pendiente">A pagar</span>';
+        return '<tr><td>' + f.hora + '</td><td>' + f.detalle + '</td><td class="monto-gasto">-$' + formatearNumero(f.monto) + '</td><td>' + pill + '</td></tr>';
+      }).join('');
+    }
+
+    document.querySelectorAll('th[data-sort]').forEach(function (th) {
+      th.addEventListener('click', function () {
+        const campo = th.getAttribute('data-sort');
+        const tabla = th.getAttribute('data-tabla');
+        const orden = tabla === 'ingresos' ? ordenIngresos : ordenGastos;
+        orden.asc = orden.campo === campo ? !orden.asc : true;
+        orden.campo = campo;
+        if (tabla === 'ingresos') renderizarIngresos(); else renderizarGastos();
+      });
+    });
+
+    document.querySelectorAll('.acordeon-header').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        document.getElementById(btn.getAttribute('data-toggle')).classList.toggle('collapsed');
+      });
+    });
+
+    // ---------- Gráficos ----------
+    var chart = null;
+    var chartHora = null;
+    var chartTicket = null;
+
+    function cargarGrafico() {
+      if (!document.getElementById('gFechaDesde').value) {
+        const hasta = hoyStr();
+        const d = new Date();
+        d.setDate(d.getDate() - 6);
+        const desde = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        document.getElementById('gFechaDesde').value = desde;
+        document.getElementById('gFechaHasta').value = hasta;
+      }
+      if (!document.getElementById('ghFecha').value) {
+        document.getElementById('ghFecha').value = hoyStr();
+      }
+      consultarGrafico();
+      consultarGraficoHora();
+      cargarMesesDisponibles();
+      cargarSemaforo();
+    }
+
+    document.getElementById('btnFiltrarGrafico').addEventListener('click', consultarGrafico);
+    document.getElementById('btnFiltrarGraficoHora').addEventListener('click', consultarGraficoHora);
+    document.getElementById('btnFiltrarGraficoProveedor').addEventListener('click', consultarGraficoProveedor);
+
+    document.getElementById('btnGuardarMeta').addEventListener('click', function () {
+      const valor = parseFloat(document.getElementById('inputMeta').value);
+      if (!valor || valor <= 0) { alert('Poné un número de meta válido'); return; }
+      google.script.run
+        .withSuccessHandler(pintarSemaforo)
+        .withFailureHandler(function (err) { alert('Error: ' + err.message); })
+        .guardarMetaHoy(valor);
+    });
+
+    // ---------- Semáforo: hoy vs promedio/meta ----------
+    function cargarSemaforo() {
+      google.script.run
+        .withSuccessHandler(pintarSemaforo)
+        .withFailureHandler(function (err) {
+          document.getElementById('semaforoEstado').textContent = 'Error: ' + err.message;
+        })
+        .getResumenHoy();
+    }
+
+    function pintarSemaforo(data) {
+      document.getElementById('semHoy').textContent = '$' + formatearNumero(data.hoy);
+      document.getElementById('semPromedio').textContent = '$' + formatearNumero(data.promedio) +
+        (data.diasPromediados ? ' (' + data.diasPromediados + 'd)' : '');
+      document.getElementById('semMeta').textContent = data.meta ? '$' + formatearNumero(data.meta) : '—';
+      document.getElementById('semMes').textContent = '$' + formatearNumero(data.totalMes);
+      document.getElementById('semAnio').textContent = '$' + formatearNumero(data.totalAnio);
+      if (data.meta && !document.getElementById('inputMeta').value) {
+        document.getElementById('inputMeta').value = data.meta;
+      }
+
+      const referencia = data.meta || data.promedio;
+      const card = document.getElementById('semaforoCard');
+      const estado = document.getElementById('semaforoEstado');
+      card.classList.remove('verde', 'amarillo', 'rojo');
+
+      if (!referencia) {
+        estado.textContent = '⚪ Todavía no hay referencia — cargá una meta o esperá más días de historial';
+        return;
+      }
+
+      const pct = Math.round((data.hoy / referencia) * 100);
+      const contra = data.meta ? 'la meta' : 'el promedio';
+
+      if (pct >= 100) {
+        card.classList.add('verde');
+        estado.textContent = '🟢 Vas arriba de ' + contra + ' (' + pct + '%)';
+      } else if (pct >= 70) {
+        card.classList.add('amarillo');
+        estado.textContent = '🟡 Cerca, seguí así (' + pct + '% de ' + contra + ')';
+      } else {
+        card.classList.add('rojo');
+        estado.textContent = '🔴 Por debajo del ritmo (' + pct + '% de ' + contra + ')';
+      }
+    }
+
+    function consultarGrafico() {
+      const desde = document.getElementById('gFechaDesde').value;
+      const hasta = document.getElementById('gFechaHasta').value;
+      google.script.run
+        .withSuccessHandler(pintarGrafico)
+        .withFailureHandler(function (err) { alert('Error: ' + err.message); })
+        .getMovimientos(desde, hasta);
+    }
+
+    function pintarGrafico(data) {
+      const porDia = {};
+      function dia(f) {
+        if (!porDia[f.fecha]) porDia[f.fecha] = { ingresos: 0, gastos: 0 };
+        return porDia[f.fecha];
+      }
+      data.ingresos.forEach(function (f) { dia(f).ingresos += f.monto; });
+      data.gastos.forEach(function (f) { if (f.pagado) dia(f).gastos += f.monto; });
+
+      const fechas = Object.keys(porDia).sort();
+      const ingresos = fechas.map(function (f) { return porDia[f].ingresos; });
+      const gastos = fechas.map(function (f) { return porDia[f].gastos; });
+      // Margen real del día: (ingreso - gastos pagados) / ingreso.
+      // null si no hubo ingreso ese día (no tiene sentido un % ahí).
+      const margenPct = fechas.map(function (f) {
+        const d = porDia[f];
+        return d.ingresos > 0 ? Math.round(((d.ingresos - d.gastos) / d.ingresos) * 1000) / 10 : null;
+      });
+
+      const ctx = document.getElementById('chartIngresosGastos').getContext('2d');
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        data: {
+          labels: fechas,
+          datasets: [
+            { type: 'bar', label: 'Ingresos', data: ingresos, backgroundColor: '#1e8e3e', yAxisID: 'y' },
+            { type: 'bar', label: 'Gastos', data: gastos, backgroundColor: '#d93025', yAxisID: 'y' },
+            { type: 'line', label: 'Margen %', data: margenPct, borderColor: '#f9ab00', backgroundColor: '#f9ab00', yAxisID: 'y1', tension: 0.3, spanGaps: false }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'bottom' } },
+          scales: {
+            y: { beginAtZero: true, position: 'left' },
+            y1: {
+              position: 'right',
+              grid: { drawOnChartArea: false },
+              title: { display: true, text: 'Margen %' },
+              ticks: { callback: function (v) { return v + '%'; } }
+            }
+          }
+        }
+      });
+    }
+
+    // ---------- Gráfico: ingreso por franja de 30 min ----------
+    function consultarGraficoHora() {
+      const fecha = document.getElementById('ghFecha').value || hoyStr();
+      google.script.run
+        .withSuccessHandler(pintarGraficoHora)
+        .withFailureHandler(function (err) { alert('Error: ' + err.message); })
+        .getMovimientos(fecha, fecha);
+    }
+
+    // Redondea "HH:mm" hacia abajo a su franja de 30 min, en minutos desde las 00:00
+    function bucket30(hora) {
+      const partes = String(hora).split(':');
+      const h = parseInt(partes[0], 10) || 0;
+      const m = parseInt(partes[1], 10) || 0;
+      return h * 60 + (m < 30 ? 0 : 30);
+    }
+
+    function etiquetaBucket(mins) {
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+    }
+
+    function pintarGraficoHora(data) {
+      const canvas = document.getElementById('chartIngresoHora');
+      const canvasTicket = document.getElementById('chartTicketPromedio');
+      const wrap = canvas.parentElement;
+      let vacio = wrap.querySelector('.vacio');
+
+      const porBucket = {};
+      data.ingresos.forEach(function (f) {
+        const b = bucket30(f.hora);
+        if (!porBucket[b]) porBucket[b] = { monto: 0, cantidad: 0 };
+        porBucket[b].monto += f.monto;
+        porBucket[b].cantidad += 1;
+      });
+
+      const claves = Object.keys(porBucket).map(Number);
+
+      if (!claves.length) {
+        if (chartHora) { chartHora.destroy(); chartHora = null; }
+        if (chartTicket) { chartTicket.destroy(); chartTicket = null; }
+        canvas.style.display = 'none';
+        canvasTicket.style.display = 'none';
+        if (!vacio) {
+          vacio = document.createElement('div');
+          vacio.className = 'vacio';
+          wrap.appendChild(vacio);
+        }
+        vacio.textContent = 'Sin ingresos ese día';
+        return;
+      }
+
+      canvas.style.display = '';
+      canvasTicket.style.display = '';
+      if (vacio) vacio.remove();
+
+      // Solo pinta desde la primera hasta la última franja con actividad
+      // (evita una pared de barras en cero durante las horas cerradas)
+      const min = Math.min.apply(null, claves);
+      const max = Math.max.apply(null, claves);
+
+      const labels = [];
+      const montos = [];
+      const cantidades = [];
+      for (let m = min; m <= max; m += 30) {
+        labels.push(etiquetaBucket(m));
+        montos.push(porBucket[m] ? porBucket[m].monto : 0);
+        cantidades.push(porBucket[m] ? porBucket[m].cantidad : 0);
+      }
+
+      const ctx = canvas.getContext('2d');
+      if (chartHora) chartHora.destroy();
+      chartHora = new Chart(ctx, {
+        data: {
+          labels: labels,
+          datasets: [
+            { type: 'bar', label: 'Ingreso ($)', data: montos, backgroundColor: '#1e8e3e', yAxisID: 'y' },
+            { type: 'line', label: 'Ventas (cantidad)', data: cantidades, borderColor: '#4285f4', backgroundColor: '#4285f4', yAxisID: 'y1', tension: 0.3 }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'bottom' } },
+          scales: {
+            y: { beginAtZero: true, position: 'left', title: { display: true, text: '$' } },
+            y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Ventas' }, ticks: { precision: 0 } }
+          }
+        }
+      });
+
+      // Ticket promedio = $ / cantidad de ventas de esa franja.
+      // null (no 0) en franjas sin ventas para que la línea corte
+      // ahí en vez de mostrar un ticket promedio falso de $0.
+      const ticketProm = montos.map(function (m, i) {
+        return cantidades[i] > 0 ? Math.round(m / cantidades[i]) : null;
+      });
+
+      const ctxTicket = canvasTicket.getContext('2d');
+      if (chartTicket) chartTicket.destroy();
+      chartTicket = new Chart(ctxTicket, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: 'Ticket promedio ($/venta)', data: ticketProm, borderColor: '#a142f4', backgroundColor: '#a142f4', tension: 0.3, spanGaps: false }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false }, title: { display: true, text: '🎫 Ticket promedio por franja' } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    }
+
+    // ---------- Gráfico: gasto por proveedor (varios meses) ----------
+    var chartProveedor = null;
+    var mesesSeleccionados = [];
+    var CATEGORIAS_NO_PROVEEDOR = ['gasto_personal', 'mercaderia', 'desperdicio'];
+    var NOMBRES_MES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    var PALETA_MESES = ['#4285f4', '#1e8e3e', '#d93025', '#f9ab00', '#a142f4', '#12b5cb', '#e37400', '#795548'];
+
+    function etiquetaMes(yyyyMM) {
+      const partes = yyyyMM.split('-');
+      return NOMBRES_MES[parseInt(partes[1], 10) - 1] + ' ' + partes[0];
+    }
+
+    function ultimoDiaMes(yyyyMM) {
+      const partes = yyyyMM.split('-');
+      const y = parseInt(partes[0], 10);
+      const m = parseInt(partes[1], 10);
+      const ultimo = new Date(y, m, 0).getDate();
+      return yyyyMM + '-' + String(ultimo).padStart(2, '0');
+    }
+
+    function cargarMesesDisponibles() {
+      google.script.run
+        .withSuccessHandler(pintarMeses)
+        .withFailureHandler(function (err) {
+          document.getElementById('listaMeses').innerHTML = '<span class="vacio">Error: ' + err.message + '</span>';
+        })
+        .getMesesDisponibles();
+    }
+
+    function pintarMeses(meses) {
+      const cont = document.getElementById('listaMeses');
+      if (!meses.length) {
+        cont.innerHTML = '<span class="vacio">Sin datos todavía</span>';
+        return;
+      }
+
+      if (!mesesSeleccionados.length) {
+        const mesActual = hoyStr().substring(0, 7);
+        mesesSeleccionados = meses.indexOf(mesActual) !== -1 ? [mesActual] : [meses[0]];
+      }
+
+      cont.innerHTML = '';
+      meses.forEach(function (m) {
+        const activo = mesesSeleccionados.indexOf(m) !== -1;
+        const label = document.createElement('label');
+        label.className = 'mes-chip' + (activo ? ' activo' : '');
+
+        const chk = document.createElement('input');
+        chk.type = 'checkbox';
+        chk.value = m;
+        chk.checked = activo;
+        chk.addEventListener('change', function () {
+          if (chk.checked) {
+            if (mesesSeleccionados.indexOf(m) === -1) mesesSeleccionados.push(m);
+          } else {
+            mesesSeleccionados = mesesSeleccionados.filter(function (x) { return x !== m; });
+          }
+          label.classList.toggle('activo', chk.checked);
+        });
+
+        label.appendChild(chk);
+        label.appendChild(document.createTextNode(etiquetaMes(m)));
+        cont.appendChild(label);
+      });
+
+      consultarGraficoProveedor();
+    }
+
+    function consultarGraficoProveedor() {
+      if (!mesesSeleccionados.length) { alert('Elegí al menos un mes'); return; }
+      const ordenados = mesesSeleccionados.slice().sort();
+      const desde = ordenados[0] + '-01';
+      const hasta = ultimoDiaMes(ordenados[ordenados.length - 1]);
+
+      google.script.run
+        .withSuccessHandler(function (data) { pintarGraficoProveedor(data, ordenados); })
+        .withFailureHandler(function (err) { alert('Error: ' + err.message); })
+        .getMovimientos(desde, hasta);
+    }
+
+    function pintarGraficoProveedor(data, meses) {
+      const canvas = document.getElementById('chartGastoProveedor');
+      const wrap = canvas.parentElement;
+      let vacio = wrap.querySelector('.vacio');
+
+      const mesesSet = {};
+      meses.forEach(function (m) { mesesSet[m] = true; });
+
+      // proveedor -> { 'yyyy-MM': monto }
+      const porProveedor = {};
+      data.gastos.forEach(function (f) {
+        if (!f.pagado) return;
+        if (CATEGORIAS_NO_PROVEEDOR.indexOf(f.detalle) !== -1) return;
+        const mes = f.fecha.substring(0, 7);
+        if (!mesesSet[mes]) return;
+        if (!porProveedor[f.detalle]) porProveedor[f.detalle] = {};
+        porProveedor[f.detalle][mes] = (porProveedor[f.detalle][mes] || 0) + f.monto;
+      });
+
+      const proveedores = Object.keys(porProveedor);
+
+      if (!proveedores.length) {
+        if (chartProveedor) { chartProveedor.destroy(); chartProveedor = null; }
+        canvas.style.display = 'none';
+        if (!vacio) {
+          vacio = document.createElement('div');
+          vacio.className = 'vacio';
+          wrap.appendChild(vacio);
+        }
+        vacio.textContent = 'Sin gastos pagados a proveedores en los meses elegidos';
+        return;
+      }
+
+      canvas.style.display = '';
+      if (vacio) vacio.remove();
+
+      function totalProveedor(p) {
+        return meses.reduce(function (s, mes) { return s + (porProveedor[p][mes] || 0); }, 0);
+      }
+      proveedores.sort(function (a, b) { return totalProveedor(b) - totalProveedor(a); });
+
+      const datasets = meses.map(function (mes, i) {
+        return {
+          label: etiquetaMes(mes),
+          data: proveedores.map(function (p) { return porProveedor[p][mes] || 0; }),
+          backgroundColor: PALETA_MESES[i % PALETA_MESES.length]
+        };
+      });
+
+      const ctx = canvas.getContext('2d');
+      if (chartProveedor) chartProveedor.destroy();
+      chartProveedor = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: proveedores, datasets: datasets },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'bottom' } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    }
+  </script>
+</body>
+</html>

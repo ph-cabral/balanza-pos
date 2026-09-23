@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0f1419">
+<title>Administración · Balanza POS</title>
+<link rel="stylesheet" href="/css/app.css?v=5">
+<link rel="stylesheet" href="/css/admin.css?v=5">
+</head>
+<body>
+
+<div class="admin">
+
+  <header class="admin-cab">
+    <h1 class="admin-titulo">Administración</h1>
+    <span class="admin-version" id="adminVersion"></span>
+    <a class="btn" href="/">← Volver al punto de venta</a>
+  </header>
+
+  <div class="aviso-version" id="avisoVersion" hidden>
+    Se instaló una versión nueva del POS.
+    <button type="button" class="btn-primario" onclick="location.reload()">Recargar esta pantalla</button>
+  </div>
+
+  <nav class="tabs">
+    <button class="tab activa" data-tab="grupos">Grupos</button>
+    <button class="tab" data-tab="marcas">Marcas</button>
+    <button class="tab" data-tab="productos">Productos</button>
+    <button class="tab" data-tab="importar">Importar</button>
+    <button class="tab" data-tab="balanza">Estaciones</button>
+    <button class="tab" data-tab="ventas">Ventas</button>
+  </nav>
+
+  <!-- ================= GRUPOS ================= -->
+  <section data-panel="grupos">
+    <div class="panel">
+      <h2 id="formTituloGrupo">Nuevo grupo</h2>
+      <p class="ayuda">
+        Los grupos son la pantalla principal del punto de venta: jamones, quesos,
+        embutidos, gaseosas, con alcohol… Cada producto pertenece a un grupo y se
+        elige de esta lista al darlo de alta.
+      </p>
+
+      <form id="formGrupo">
+        <input type="hidden" id="grupoId">
+        <div class="form-grilla" style="grid-template-columns: 1fr auto;">
+          <div class="campo">
+            <label for="grupoNombre">Grupo</label>
+            <input id="grupoNombre" required placeholder="Jamones">
+          </div>
+          <div class="campo campo-icono">
+            <label for="grupoIcono">Icono</label>
+            <input id="grupoIcono" maxlength="8" placeholder="auto" title="Elegí uno de la lista o pegá cualquier emoji. Vacío = se elige solo por el nombre.">
+          </div>
+          <div class="iconos-sugeridos" id="iconosSugeridos"></div>
+          <div class="acciones-form" style="margin:0">
+            <button type="submit" class="btn-primario" id="btnGuardarGrupo">Guardar grupo</button>
+            <button type="button" class="btn" id="btnCancelarGrupo" hidden>Cancelar edición</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <h2>Orden en la pantalla de venta</h2>
+      <p class="ayuda">
+        Arrastrá los grupos para acomodarlos, o movelos con las flechas. Este es
+        el orden en el que aparecen en la tablet. (En la tablet también se pueden
+        acomodar: manteniendo apretado un grupo se entra al modo ordenar.)
+      </p>
+
+      <div class="lista-grupos" id="listaGrupos"></div>
+    </div>
+  </section>
+
+  <!-- ================= MARCAS ================= -->
+  <section data-panel="marcas" hidden>
+    <div class="panel">
+      <h2 id="formTituloMarca">Nueva marca</h2>
+      <p class="ayuda">
+        Cargá acá las marcas antes de dar de alta productos: en el alta de producto
+        se elige la marca de una lista, para no repetir el mismo nombre escrito de
+        formas distintas (“Paladini” / “paladini” ya no generan dos marcas).
+      </p>
+
+      <form id="formMarca">
+        <input type="hidden" id="marcaId">
+        <div class="form-grilla" style="grid-template-columns: 1fr auto;">
+          <div class="campo">
+            <label for="marcaNombre">Marca</label>
+            <input id="marcaNombre" required placeholder="Paladini">
+          </div>
+          <div class="acciones-form" style="margin:0">
+            <button type="submit" class="btn-primario" id="btnGuardarMarca">Guardar marca</button>
+            <button type="button" class="btn" id="btnCancelarMarca" hidden>Cancelar edición</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <h2>Marcas cargadas</h2>
+      <div class="tabla-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Marca</th>
+              <th class="der">Productos activos</th>
+              <th class="der">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tablaMarcas"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= PRODUCTOS ================= -->
+  <section data-panel="productos" hidden>
+    <div class="panel">
+      <h2 id="formTitulo">Nuevo producto</h2>
+      <p class="ayuda">
+        Los productos “por peso” se cobran por kilo y toman el peso de la balanza.
+        Los “por unidad” se suman de a uno, ideal para lo que se escanea. El grupo
+        y la marca se eligen de las listas cargadas en las pestañas “Grupos” y
+        “Marcas”.
+      </p>
+
+      <form id="formProducto">
+        <input type="hidden" id="prodId">
+        <div class="form-grilla">
+          <div class="campo">
+            <label for="prodNombre">Producto</label>
+            <input id="prodNombre" required placeholder="Jamón cocido">
+          </div>
+          <div class="campo">
+            <label for="prodMarca">Marca</label>
+            <select id="prodMarca">
+              <option value="">— Sin marca —</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label for="prodCategoria">Grupo</label>
+            <select id="prodCategoria"></select>
+          </div>
+          <div class="campo">
+            <label for="prodTipo">Se vende</label>
+            <select id="prodTipo">
+              <option value="peso">Por peso (precio por kg)</option>
+              <option value="unidad">Por unidad</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label for="prodPrecio">Precio <span id="lblPrecio">por kg</span></label>
+            <input id="prodPrecio" type="number" step="0.01" min="0" required placeholder="12500.00">
+          </div>
+          <div class="campo">
+            <label for="prodCodigo">Código de barras</label>
+            <input id="prodCodigo" placeholder="opcional" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="acciones-form">
+          <button type="submit" class="btn-primario" id="btnGuardar">Guardar producto</button>
+          <button type="button" class="btn" id="btnCancelar" hidden>Cancelar edición</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <h2>Catálogo</h2>
+      <p class="ayuda">
+        Agrupado en el mismo orden que la pantalla de venta. Tocá un grupo para
+        filtrar la tabla.
+      </p>
+      <div class="form-grilla" style="grid-template-columns: 1fr auto;">
+        <div class="campo">
+          <input id="filtroProductos" placeholder="Buscar en el catálogo…" autocomplete="off">
+        </div>
+        <div class="switch">
+          <input type="checkbox" id="verInactivos">
+          <label for="verInactivos">Ver dados de baja</label>
+        </div>
+      </div>
+
+      <div class="chips" id="chipsCategorias"></div>
+
+      <div class="tabla-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th>Marca</th>
+              <th>Tipo</th>
+              <th>Código</th>
+              <th class="der">Precio</th>
+              <th class="der">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tablaProductos"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= IMPORTAR ================= -->
+  <section data-panel="importar" hidden>
+    <div class="panel">
+      <h2>Importar productos desde planilla</h2>
+      <p class="ayuda">
+        Pegá las filas separadas por punto y coma o por tabulación (se puede copiar
+        directo desde Excel). Orden de las columnas:<br>
+        <strong>nombre ; marca ; grupo ; tipo (peso|unidad) ; precio ; código de barras</strong><br>
+        El precio va en pesos, con coma o punto decimal. La primera fila puede ser
+        el encabezado. Los grupos y las marcas que no existan se dan de alta solos.
+      </p>
+
+      <textarea id="csv" placeholder="Jamón cocido;Paladini;Fiambres;peso;12500;
+Queso cremoso;La Serenísima;Lácteos;peso;9800;
+Gaseosa 500ml;Coca Cola;Bebidas;unidad;1500;7790895000997"></textarea>
+
+      <div class="acciones-form">
+        <button class="btn-primario" id="btnImportar">Importar</button>
+        <button class="btn" id="btnPrevisualizar">Previsualizar</button>
+      </div>
+
+      <div id="previa" class="mono" hidden></div>
+    </div>
+  </section>
+
+  <!-- ================= ESTACIONES / BALANZAS / ESCÁNERES ================= -->
+  <section data-panel="balanza" hidden>
+    <div class="panel">
+      <h2>Estaciones de trabajo</h2>
+      <p class="ayuda">
+        Cada estación es un puesto de venta con su balanza y su escáner. Las balanzas y
+        los escáneres van enchufados a esta PC; cada tablet, celular o PC de venta elige
+        una vez en qué estación trabaja y recibe solo el peso y los códigos de esa estación.
+      </p>
+      <div id="listaEstaciones" class="lista-equipos"></div>
+      <div class="acciones-form">
+        <button type="button" class="btn" id="btnAgregarEstacion">+ Agregar estación</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Balanzas</h2>
+      <p class="ayuda">
+        Con más de una balanza, atá cada una a su cable con el <b>número de serie del
+        adaptador</b> (se ve en “Puertos de esta PC”, abajo): Windows puede cambiar el
+        número de COM, el de serie no. Mientras no esté la balanza, usá el modo simulador.
+      </p>
+      <div id="listaBalanzas" class="lista-equipos"></div>
+      <div class="acciones-form">
+        <button type="button" class="btn" id="btnAgregarBalanza">+ Agregar balanza</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Escáneres</h2>
+      <p class="ayuda">
+        Para que esta PC reparta los códigos a cada estación, el escáner tiene que estar en
+        modo <b>USB-COM</b> (también llamado “USB CDC” o “Virtual COM”): se activa leyendo un
+        código de configuración del manual del escáner y a partir de ahí aparece como un
+        puerto COM. En el modo de fábrica (teclado) escribe en la pantalla de esta PC y no
+        se puede asignar a una estación.
+      </p>
+      <div id="listaEscaneres" class="lista-equipos"></div>
+      <div class="acciones-form">
+        <button type="button" class="btn" id="btnAgregarEscaner">+ Agregar escáner</button>
+      </div>
+    </div>
+
+    <div class="barra-guardar" id="barraGuardar">
+      <span id="estadoGuardado" class="estado-guardado">Sin cambios</span>
+      <button type="button" class="btn" id="btnDescartar" disabled>Descartar cambios</button>
+      <button type="button" class="btn-primario" id="btnGuardarEquipos" disabled>Guardar y reconectar</button>
+    </div>
+
+    <div class="panel">
+      <h2>Puertos de esta PC</h2>
+      <p class="ayuda">
+        Lo que Windows ve enchufado. Con “Asignar a…” se copia el puerto y el número de
+        serie al equipo elegido (después hay que guardar).
+      </p>
+      <div class="acciones-form" style="margin-top:0">
+        <button type="button" class="btn" id="btnPuertos">Buscar puertos</button>
+      </div>
+      <div class="tabla-wrap">
+        <table>
+          <thead>
+            <tr><th>Puerto</th><th>Fabricante</th><th>N° de serie</th><th>VID:PID</th><th>En uso por</th><th class="der">Asignar</th></tr>
+          </thead>
+          <tbody id="tablaPuertos">
+            <tr><td colspan="6" class="vacio">Tocá “Buscar puertos”.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Diagnóstico de balanza</h2>
+      <p class="ayuda">
+        Estado actual y últimas tramas crudas que mandó la balanza. Si el peso no se
+        lee bien, copiá estas líneas y con eso se ajusta el parser al modelo exacto.
+      </p>
+      <div class="campo" style="max-width:320px;margin-bottom:14px">
+        <label for="dgBalanza">Balanza</label>
+        <select id="dgBalanza"></select>
+      </div>
+      <div class="stats" style="margin-bottom:14px">
+        <div class="stat"><div class="stat-label">Peso actual</div><div class="stat-valor num" id="dgPeso">—</div></div>
+        <div class="stat"><div class="stat-label">Estado</div><div class="stat-valor" id="dgEstado" style="font-size:18px">—</div></div>
+        <div class="stat"><div class="stat-label">Protocolo</div><div class="stat-valor" id="dgProto" style="font-size:18px">—</div></div>
+      </div>
+      <div class="mono" id="dgTramas">Esperando tramas…</div>
+    </div>
+
+    <div class="panel">
+      <h2>Entrar desde otro equipo</h2>
+      <p class="ayuda">
+        Desde un celular, tablet u otra PC conectados a la misma red (wifi o cable),
+        abrí en el navegador alguna de estas direcciones:
+      </p>
+      <div class="mono" id="direccionesRed">Buscando…</div>
+    </div>
+
+    <datalist id="listaPuertos"></datalist>
+    <datalist id="listaSeries"></datalist>
+  </section>
+
+  <!-- ================= VENTAS ================= -->
+  <section data-panel="ventas" hidden>
+    <div class="panel">
+      <h2>Resumen de hoy</h2>
+      <div class="stats">
+        <div class="stat"><div class="stat-label">Ventas</div><div class="stat-valor num" id="vCantidad">0</div></div>
+        <div class="stat"><div class="stat-label">Facturado</div><div class="stat-valor num" id="vTotal">$ 0,00</div></div>
+      </div>
+      <div class="stats" id="vPorEstacion" style="margin-top:12px" hidden></div>
+    </div>
+
+    <div class="panel" id="panelSheets" hidden>
+      <h2>Copia a Google Sheets</h2>
+      <p class="ayuda">Mientras dure la transición, cada venta se copia también a la planilla
+        como una fila <b>cliente</b>. Si no hay internet quedan pendientes y se reintentan solas.</p>
+      <div class="stats">
+        <div class="stat"><div class="stat-label">Pendientes</div><div class="stat-valor num" id="shPendientes">0</div></div>
+        <div class="stat"><div class="stat-label">Copiadas</div><div class="stat-valor num" id="shEnviadas">0</div></div>
+      </div>
+      <p class="ayuda" id="shDetalle" style="margin-top:12px"></p>
+      <button class="btn-primario" id="btnSheetsReintentar">Reintentar ahora</button>
+    </div>
+
+    <div class="panel">
+      <h2>Últimas ventas</h2>
+      <p class="ayuda">Tocá una venta para ver el detalle de los artículos.</p>
+      <div class="tabla-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th><th>Fecha</th><th>Estación</th><th class="der">Artículos</th>
+              <th class="der">Total</th><th class="der">ARCA</th>
+            </tr>
+          </thead>
+          <tbody id="tablaVentas"></tbody>
+        </table>
+      </div>
+      <div id="detalleVenta" class="mono" hidden style="margin-top:14px"></div>
+    </div>
+  </section>
+
+</div>
+
+<div class="avisos" id="avisos"></div>
+
+<script src="/js/admin.js?v=5"></script>
+</body>
+</html>

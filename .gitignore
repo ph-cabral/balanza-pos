@@ -1,0 +1,22 @@
+node_modules/
+data/
+capturas/
+*.log
+dist/
+logs/
+runtime/
+respaldos/
+
+# Propios de cada PC (no se versionan; ver config.example.json)
+config.json
+version.json
+deploy.json
+.deploy/
+_paquete_anterior/
+
+# Secretos: tokens de Telegram/Mammouth (ver config.example.gs)
+config.gs
+
+# Archivos .env de otros proyectos (tienen credenciales reales)
+.env
+.env.*

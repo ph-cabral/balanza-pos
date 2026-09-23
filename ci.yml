@@ -1,0 +1,96 @@
+# Integracion y entrega continua del POS.
+#
+#   push a main  ->  pruebas (simulador de balanza, base vacia)
+#                ->  si pasan, la rama "produccion" apunta a ese commit
+#                ->  la PC del POS lo detecta (instalador/actualizar.ps1)
+#                    y lo instala cuando la caja esta libre.
+#
+# Un push a otra rama o un pull request solo corre las pruebas.
+# "Run workflow" (a mano) sobre main vuelve a probar y publicar.
+
+name: CI/CD
+
+on:
+  push:
+    branches: ['**', '!produccion']
+  pull_request:
+  workflow_dispatch:
+
+# Si llegan dos push seguidos a la misma rama, solo importa el ultimo.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Dependencias
+        run: npm ci
+
+      - name: Configuracion de prueba (simulador, sin Google Sheets)
+        run: |
+          node -e "
+            const fs = require('fs');
+            const c = JSON.parse(fs.readFileSync('config.example.json', 'utf8'));
+            for (const b of c.balanzas) b.simulador = true;
+            c.sheets.habilitado = false;
+            fs.writeFileSync('config.json', JSON.stringify(c, null, 2));
+          "
+          npm run seed
+
+      - name: Prueba de humo (API, pesos, ventas)
+        run: npm run test-humo
+        env: { POS_SIN_SHEETS: '1' }
+
+      - name: Grupos
+        run: npm run test-grupos
+
+      - name: Estaciones
+        run: npm run test-estaciones
+
+      - name: Despliegue (version, caja ocupada)
+        run: npm run test-deploy
+
+      - name: Navegador para la prueba de pantalla
+        run: |
+          npm install -g playwright@1
+          playwright install --with-deps chromium
+
+      - name: Pantalla completa (Playwright)
+        run: npm run test-ui
+        env: { POS_SIN_SHEETS: '1' }
+
+      - name: Capturas si fallo
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capturas
+          path: capturas/
+          if-no-files-found: ignore
+
+  publicar:
+    needs: pruebas
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mover la rama produccion a este commit
+        run: |
+          git push --force origin "${GITHUB_SHA}:refs/heads/produccion"
+          echo "### Publicado en produccion" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$(git log -1 --format='%h %s' "$GITHUB_SHA")\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "La PC del POS lo instala en los proximos minutos, cuando la caja este libre." >> "$GITHUB_STEP_SUMMARY"

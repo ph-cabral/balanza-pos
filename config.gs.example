@@ -1,0 +1,78 @@
+// Copia de ejemplo de config.gs SIN claves (config.gs real no se sube a git).
+// En el editor de Apps Script se usa config.gs con los valores verdaderos.
+
+// ========================================
+// CONFIGURACIÓN GLOBAL
+// ========================================
+const CONFIG = {
+  // Telegram
+  TELEGRAM_TOKEN: "PEGAR_TOKEN_DEL_BOT",
+  TELEGRAM_API_BASE: "https://api.telegram.org",
+  WEBAPP_URL:
+    "https://script.google.com/macros/s/AKfycbz0ErVvf3UJkqOdQfXyfSO5s8aMnAGlqK22zh3OcGnIDlMBamx4dcFsiCwFoFEYyzMC/exec",
+
+  // Google Sheets
+  SHEET_ID: "15eZpBLQVGjY54vA_07kauFhhu2a7ocEXF6jQ-d-hHf4",
+  PROVEEDORES_SHEET_NAME: "proveedores",
+  TIMEZONE: "America/Argentina/Buenos_Aires",
+
+  // POS con balanza (servidor Node): clave compartida para aceptar
+  // ventas por el webapp. Tiene que ser la misma que
+  // config.json -> sheets.token del POS. Ver pos.gs.
+  POS_TOKEN: "MISMA_CLAVE_QUE_config.json_sheets.token",
+
+  // Mammouth (OCR de facturas)
+  MAMMOUTH_KEY: "PEGAR_CLAVE_DE_MAMMOUTH",
+  MAMMOUTH_API_URL: "https://api.mammouth.ai/v1/chat/completions",
+  MAMMOUTH_MODEL: "gpt-4.1-nano",
+
+  // Reglas de negocio
+  GANANCIA_PORCENTAJE: 0.2,
+  FACTOR_MERCADERIA_DESPERDICIO: 0.75,
+};
+
+// Semilla: solo se usa UNA vez, para poblar la pestaña "proveedores"
+// la primera vez que se crea. Una vez creada, la lista real se edita
+// directamente en la hoja de cálculo (pestaña "proveedores"), no acá.
+const PROVEEDORES_SEED = [
+  "Amiplast",
+  "Anselmi",
+  "Bachilito",
+  "Cafaratti(pepsi)",
+  "Carbon",
+  "Barraza",
+  "Coca",
+  "Disbe",
+  "Dutto",
+  "DP(Paladini)",
+  "Empanadas",
+  "Esperanza",
+  "Fernando_Cavallo",
+  "Glass",
+  "GrupoM",
+  "Huevos",
+  "L&L(Secco)",
+  "La_Bri",
+  "Las_Cañitas",
+  "Marzal",
+  "Milanesas",
+  "Moni(chocol/ensala)",
+  "Nono_Fidel",
+  "Panaderia_Argentina",
+  "Panero",
+  "Pauletto_rey",
+  "Piamontesa",
+  "Pizza_Juan",
+  "Placeres_Naturales",
+  "Region_Centro",
+  "Veneziana",
+  "Verduleria",
+  "Otro",
+];
+
+// Tipos de pago
+const TIPOS_PAGO = {
+  GASTO: "gasto_personal",
+  MERCADERIA: "mercaderia",
+  DESPERDICIO: "desperdicio",
+};

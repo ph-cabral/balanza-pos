@@ -1,0 +1,41 @@
+{
+  "http": {
+    "port": 3000,
+    "host": "0.0.0.0"
+  },
+  "balanzas": [
+    {
+      "id": "b1",
+      "nombre": "Balanza 1",
+      "simulador": false,
+      "puerto": "COM4",
+      "numeroSerie": "",
+      "baudRate": 9600,
+      "dataBits": 8,
+      "parity": "none",
+      "stopBits": 2,
+      "protocolo": "kretz",
+      "autodeteccion": true,
+      "lecturasParaEstable": 4,
+      "toleranciaEstabilidadKg": 0.002,
+      "pesoMinimoKg": 0.005,
+      "broadcastHz": 6
+    }
+  ],
+  "escaneres": [],
+  "estaciones": [
+    { "id": "e1", "nombre": "Mostrador 1", "balanza": "b1", "escaner": null }
+  ],
+  "venta": {
+    "decimalesPeso": 3,
+    "avisarSiNoTara": true,
+    "umbralTaraKg": 0.02,
+    "segundosCarrito": 5
+  },
+  "sheets": {
+    "habilitado": false,
+    "url": "",
+    "token": "",
+    "reintentoSegundos": 60
+  }
+}
