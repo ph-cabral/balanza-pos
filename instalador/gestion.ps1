@@ -13,6 +13,18 @@ $Tarea   = $TareaPOS
 $Regla   = 'Balanza POS'
 $Escrit  = Join-Path $env:PUBLIC 'Desktop'
 
+# Si no responde a tiempo: ruta completa del log y sus ultimas lineas en pantalla.
+function Avisar-NoResponde([string]$Motivo) {
+  $log = Join-Path $Dir 'logs\pos.log'
+  Write-Host "`n  $Motivo" -ForegroundColor Yellow
+  Write-Host "  Puede estar arrancando todavia: probar http://localhost:$Puerto en un minuto."
+  Write-Host "  Log: $log"
+  if (Test-Path $log) {
+    Write-Host '  Ultimas lineas:' -ForegroundColor DarkGray
+    Get-Content $log -Tail 15 -Encoding UTF8 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+  }
+}
+
 function Mostrar-Direcciones([int]$Puerto) {
   Write-Host ''
   Write-Host '  En esta PC:        ' -NoNewline; Write-Host "http://localhost:$Puerto" -ForegroundColor Cyan
@@ -103,12 +115,13 @@ switch ($Accion) {
     Acceso-Directo 'Balanza POS - Administracion' "http://localhost:$Puerto/admin.html"
     Write-Host '  [6/6] Suspension desactivada con corriente; accesos directos en el escritorio'
 
-    if (Esperar-POS $Puerto) {
+    # 90 s: el primer arranque como SYSTEM puede tardar (antivirus revisando node.exe y los .node).
+    if (Esperar-POS $Puerto 90) {
       Write-Host "`n  El POS esta andando." -ForegroundColor Green
       Mostrar-Direcciones $Puerto
       Write-Host '  Revisar en Administracion > Balanza que el puerto COM sea el de esta PC.'
     } else {
-      Write-Host "`n  La tarea arranco pero el POS no responde. Mirar logs\pos.log" -ForegroundColor Yellow
+      Avisar-NoResponde 'La tarea arranco pero el POS no responde en 90 s.'
     }
   }
 
@@ -120,8 +133,8 @@ switch ($Accion) {
   'iniciar' {
     Detener-POS
     Start-ScheduledTask -TaskName $Tarea
-    if (Esperar-POS $Puerto) { Write-Host "`n  POS andando." -ForegroundColor Green; Mostrar-Direcciones $Puerto }
-    else { Write-Host "`n  No responde. Mirar logs\pos.log" -ForegroundColor Yellow }
+    if (Esperar-POS $Puerto 90) { Write-Host "`n  POS andando." -ForegroundColor Green; Mostrar-Direcciones $Puerto }
+    else { Avisar-NoResponde 'El POS no responde en 90 s.' }
   }
 
   'desinstalar' {
