@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0f1419">
 <title>Administración · Balanza POS</title>
 <link rel="stylesheet" href="/css/app.css?v=5">
-<link rel="stylesheet" href="/css/admin.css?v=6">
+<link rel="stylesheet" href="/css/admin.css?v=7">
 </head>
 <body>
 
@@ -375,6 +375,35 @@ Gaseosa 500ml;Coca Cola;Bebidas;unidad;1500;7790895000997"></textarea>
       </div>
     </div>
 
+    <div class="panel" id="panelGastos">
+      <div class="gastos-cab">
+        <div>
+          <h2>Gastos por proveedor · <span id="gMesNombre">—</span></h2>
+          <p class="ayuda">Lo cargado como proveedor o gasto por Telegram en la planilla de Google.
+            Mismo mes que «Totales». Tocá un proveedor para ver cada pago.</p>
+        </div>
+        <div class="gastos-acciones">
+          <span class="gastos-hora" id="gActualizado"></span>
+          <button class="btn chico" id="btnGastosActualizar" type="button">Actualizar</button>
+        </div>
+      </div>
+      <div class="gastos-aviso" id="gAviso" hidden></div>
+      <div id="gCuerpo">
+        <div class="stats totales-stats">
+          <div class="stat"><div class="stat-label">Total gastado (pagado)</div><div class="stat-valor num" id="gTotal">—</div></div>
+          <div class="stat"><div class="stat-label">A pagar</div><div class="stat-valor num" id="gAPagar">—</div></div>
+          <div class="stat"><div class="stat-label">Proveedores con gastos</div><div class="stat-valor num" id="gCantProv">—</div></div>
+          <div class="stat"><div class="stat-label">Movimientos</div><div class="stat-valor num" id="gMovs">—</div></div>
+        </div>
+        <div class="tabla-wrap totales-tabla gastos-tabla">
+          <table>
+            <thead><tr><th>Proveedor</th><th class="der col-mov">Mov.</th><th class="der col-apagar">A pagar</th><th class="der">Pagado</th><th class="der pct">%</th></tr></thead>
+            <tbody id="tablaGastos"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <div class="panel" id="panelSheets" hidden>
       <h2>Copia a Google Sheets</h2>
       <p class="ayuda">Mientras dure la transición, cada venta se copia también a la planilla
@@ -409,6 +438,6 @@ Gaseosa 500ml;Coca Cola;Bebidas;unidad;1500;7790895000997"></textarea>
 
 <div class="avisos" id="avisos"></div>
 
-<script src="/js/admin.js?v=6"></script>
+<script src="/js/admin.js?v=7"></script>
 </body>
 </html>

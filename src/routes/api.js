@@ -8,8 +8,9 @@
 const express = require('express');
 const db = require('../db');
 const puertos = require('../puertos');
+const { mesValido } = require('../gastos');
 
-module.exports = function crearApi({ estaciones, guardarConfig, config, sheets }) {
+module.exports = function crearApi({ estaciones, guardarConfig, config, sheets, gastos }) {
   const router = express.Router();
 
   const ok = (res, data) => res.json({ ok: true, ...data });
@@ -297,6 +298,19 @@ module.exports = function crearApi({ estaciones, guardarConfig, config, sheets }
   // mes. Declarada antes de /ventas/:id para que 'totales' no se tome como id.
   router.get('/ventas/totales', (req, res) => {
     ok(res, db.totalesVentas(String(req.query.mes || ''), Number(req.query.meses) || 24));
+  });
+
+  // --- Gastos por proveedor (de la planilla de Google) ----------------------
+
+  // ?mes=AAAA-MM (por defecto el actual); ?refrescar=1 saltea la memoria.
+  // Nunca falla con 5xx: si Google no responde, devuelve { error } para que
+  // administracion lo muestre en el panel sin romper el resto de Ventas.
+  router.get('/gastos', async (req, res) => {
+    const mesActual = db.hoyLocal().slice(0, 7);
+    const mes = mesValido(req.query.mes) ? String(req.query.mes) : mesActual;
+    if (!gastos) return ok(res, { gastos: { habilitado: false, mes, motivo: 'No disponible' } });
+    const d = await gastos.delMes(mes, { refrescar: req.query.refrescar === '1' });
+    ok(res, { gastos: d });
   });
 
   // --- Copia a Google Sheets (transicion) ----------------------------------

@@ -130,6 +130,22 @@ ventas y el promedio por día con ventas. A la derecha, los meses (hasta 24) con
 su total; tocando uno se ven sus días. Suma todas las estaciones y sale de la base
 del POS (`data/pos.db`), no de la planilla. API: `GET /api/ventas/totales?mes=AAAA-MM`.
 
+**Gastos por proveedor:** Administración → Ventas → "Gastos por proveedor", debajo
+de los totales y del mismo mes elegido. Muestra el total gastado (pagado), lo que
+queda a pagar, y una fila por proveedor con sus movimientos, lo pagado, lo pendiente
+y el porcentaje sobre el total; tocando un proveedor se ve cada pago con fecha y hora.
+Primero van los proveedores de la pestaña `proveedores` de la planilla; después
+"Otros gastos" (lo que el bot guarda con el nombre del usuario —gasto personal,
+mercadería— y desperdicio). **La fuente es la planilla de Google**, porque los gastos
+se siguen cargando por Telegram: el POS los pide al proyecto de Apps Script
+"POS → Planilla" (acción `gastos`, misma URL y mismo token que la copia de ventas) y
+los guarda 3 minutos en memoria; *Actualizar* fuerza la lectura. Alcanza con
+`sheets.url` y `sheets.token` (no depende de `sheets.habilitado`); se apaga con
+`sheets.gastos: false`. Si Google no responde se muestra la última lectura con un
+aviso. API: `GET /api/gastos?mes=AAAA-MM[&refrescar=1]`. Requiere publicar la versión
+nueva de `apps-script-pos/Codigo.gs` (Implementar → Administrar implementaciones →
+editar → Nueva versión; la URL no cambia).
+
 **Balanzas:** con dos balanzas iguales hay dos adaptadores FTDI y Windows les puede
 cambiar el número de COM. Atar cada una a su cable con el **número de serie del
 adaptador**: Administración → Estaciones → Puertos de esta PC → "Asignar a…"
@@ -195,6 +211,7 @@ node scripts/test-ui.js      prueba la pantalla con un navegador real
 node scripts/test-estaciones.js  dos balanzas y dos escáneres simulados en dos estaciones
                                  (usa config y base temporales, puerto 3057)
 node scripts/test-deploy.js  lo que usa el actualizador automático (puerto 3058)
+node scripts/test-gastos.js  gastos por proveedor: Codigo.gs con planilla simulada y /api/gastos (puerto 3059)
 npm test                     todas menos la de pantalla
 ```
 

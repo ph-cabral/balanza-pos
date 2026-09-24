@@ -16,6 +16,7 @@ const { WebSocketServer } = require('ws');
 const Estaciones = require('./estaciones');
 const crearApi = require('./routes/api');
 const crearSheets = require('./sheets');
+const crearGastos = require('./gastos');
 
 const RAIZ = path.join(__dirname, '..');
 // POS_CONFIG permite correr las pruebas con otra configuracion sin tocar la real.
@@ -38,7 +39,8 @@ function leerConfig() {
 // asi un cambio llega a la PC del POS con el despliegue automatico sin tener que
 // entrar a editarla. Las claves (sheets.token) siguen solo en config.json.
 function aplicarConfigComun(cfg) {
-  const ruta = path.join(RAIZ, 'config.comun.json');
+  // POS_CONFIG_COMUN: otra ruta (las pruebas la apuntan a un archivo inexistente).
+  const ruta = process.env.POS_CONFIG_COMUN || path.join(RAIZ, 'config.comun.json');
   let comun;
   try {
     comun = JSON.parse(fs.readFileSync(ruta, 'utf8').replace(/^\uFEFF/, ''));
@@ -96,6 +98,8 @@ app.use(express.json({ limit: '2mb' }));
 
 // --- Copia a Google Sheets (transicion) ------------------------------------
 const sheets = crearSheets(config);
+// Gastos por proveedor: se leen de la misma planilla (los carga el bot de Telegram).
+const gastos = crearGastos(config);
 
 // Ultima vez que alguien modifico algo por la API (venta, alta de producto...).
 // El actualizador automatico no reinicia el POS si hubo movimiento reciente.
@@ -105,7 +109,7 @@ app.use('/api', (req, _res, next) => {
   next();
 });
 
-app.use('/api', crearApi({ estaciones, guardarConfig, config, sheets }));
+app.use('/api', crearApi({ estaciones, guardarConfig, config, sheets, gastos }));
 
 app.get('/api/version', (_req, res) => {
   res.json({ ok: true, version: VERSION, iniciado: INICIADO, deploy: leerEstadoDeploy() });

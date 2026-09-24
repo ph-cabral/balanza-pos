@@ -348,3 +348,41 @@ td select.asignar {
   .celda-total { min-width: 0; }
   .totales-tabla .dia-sem { width: 36px; }
 }
+
+/* Ventas: gastos por proveedor (de la planilla de Google) */
+.gastos-cab { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.gastos-cab h2 { margin-bottom: 6px; }
+.gastos-cab .ayuda { margin-bottom: 12px; }
+.gastos-acciones { display: flex; align-items: center; gap: 10px; }
+.gastos-hora { font-size: 12px; color: var(--texto-tenue); white-space: nowrap; }
+.gastos-aviso {
+  margin: 0 0 12px; padding: 10px 14px; font-size: 14px; line-height: 1.45;
+  border: 1px solid var(--borde); border-left: 4px solid var(--aviso); border-radius: var(--radio-chico);
+  background: var(--fondo); color: var(--texto-medio);
+}
+.gastos-aviso.error { border-left-color: var(--error); }
+.gastos-tabla { max-height: 560px; }
+.gastos-tabla td.prov { font-weight: 600; }
+.gastos-tabla td.prov .flecha { display: inline-block; width: 14px; color: var(--texto-tenue); font-weight: 400; }
+.gastos-tabla .apagar { color: var(--aviso); }
+.gastos-tabla tr.bloque td {
+  padding-top: 14px; font-size: 12px; font-weight: 700; color: var(--texto-tenue);
+  text-transform: uppercase; letter-spacing: .5px; background: var(--panel);
+}
+.gastos-tabla tr.mov td { font-size: 13px; color: var(--texto-medio); background: var(--fondo); padding-top: 6px; padding-bottom: 6px; }
+.gastos-tabla tr.mov td:first-child { padding-left: 34px; white-space: nowrap; }
+.gastos-tabla tr.abierto td { background: var(--panel-alto); }
+.gastos-tabla tr.abierto td:first-child { box-shadow: inset 3px 0 0 var(--acento); }
+.gastos-tabla .pct { color: var(--texto-tenue); min-width: 48px; }
+.gastos-tabla .pill.apagar { border-color: var(--aviso); }
+
+.gastos-tabla .solo-cel { display: none; }
+.gastos-tabla td.prov .solo-cel { font-size: 12px; font-weight: 600; margin: 2px 0 0 14px; }
+
+@media (max-width: 520px) {
+  .gastos-tabla .col-mov, .gastos-tabla .col-apagar, .gastos-tabla .pct { display: none; }
+  .gastos-tabla .solo-cel { display: block; }
+  .gastos-tabla td .solo-cel:not(div) { display: inline; }
+  .gastos-tabla tr.mov td:first-child { padding-left: 20px; }
+}
+.gastos-tabla tr.fila-total td { font-weight: 700; border-top: 1px solid var(--borde); border-bottom: 0; }

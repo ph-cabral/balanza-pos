@@ -798,6 +798,7 @@ const api = {
     if (!venta) return null;
     return { ...venta, items: S.itemsDeVenta.all(id) };
   },
+  hoyLocal: () => S.hoyLocal.get().hoy, // 'AAAA-MM-DD' en hora de la PC
   resumenDia: () => S.resumenDia.get(),
   resumenDiaPorEstacion: () => S.resumenDiaPorEstacion.all(),
 

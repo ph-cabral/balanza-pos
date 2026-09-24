@@ -24,6 +24,9 @@
 //   { ok: true, aceptadas: [123, ...], rechazadas: [{id, error}],
 //     telegram: "ok" | "sin configurar" | "sin ventas nuevas" | "error: ..." }
 //
+// También responde, solo lectura, los gastos de un mes para el POS:
+//   { accion: "gastos", token: "...", mes: "2026-09" }  (ver leerGastosPos_)
+//
 // Convivencia con el bot (dos proyectos, no comparten lock ni cache):
 //  - Se escribe con appendRow, que es atómico: aunque el bot escriba en
 //    el mismo instante, ninguna fila pisa a otra.
@@ -60,6 +63,10 @@ function doPost(e) {
     return responderJson_({ ok: false, error: 'cuerpo no es JSON' });
   }
   try {
+    // Consulta de gastos (solo lectura) para Administración → Ventas del POS.
+    if (data && data.accion === 'gastos') {
+      return responderJson_(leerGastosPos_(data, leerConfigPos_()));
+    }
     const r = procesarYAvisar_(data);
     return responderJson_(r);
   } catch (err) {
@@ -281,6 +288,76 @@ function calcularTotalesPos_() {
   return res;
 }
 
+// ========================================
+// GASTOS DE UN MES (solo lectura)
+// ----------------------------------------
+// El POS los muestra en Administración → Ventas, separados por proveedor.
+// Pedido:    { accion: "gastos", token: "...", mes: "yyyy-MM" }
+// Respuesta: { ok, mes, gastos: [{ fecha, hora, detalle, monto, pagado }],
+//              proveedores: ["Coca", ...] }
+// Un gasto es toda fila que no es "cliente" (proveedor pagado o a pagar,
+// gasto personal o mercadería —el bot guarda el usuario—, desperdicio).
+// "monto" va en positivo, tal como está en la planilla sin el signo.
+// Lee la hoja del mes y la anual (meses ya archivados), como
+// getFilasDelAño() del dashboard. No escribe nada.
+// ========================================
+function leerGastosPos_(data, cfg) {
+  if (!cfg.posToken || !data || data.token !== cfg.posToken) {
+    return { ok: false, error: 'token invalido' };
+  }
+  const mes = String(data.mes || '');
+  if (!/^\d{4}-\d{2}$/.test(mes)) return { ok: false, error: 'mes invalido' };
+
+  const spreadsheet = SpreadsheetApp.openById(POS_CONFIG.SHEET_ID);
+  const anio = mes.substring(0, 4);
+  const patron = new RegExp('^' + anio + '(-\\d{2})?$');
+  const gastos = [];
+
+  spreadsheet.getSheets().forEach(function (sheet) {
+    const nombre = sheet.getName();
+    if (!patron.test(nombre)) return;
+    if (nombre.length === 7 && nombre !== mes) return; // hoja de otro mes
+    const datos = sheet.getDataRange().getValues();
+    for (let i = 1; i < datos.length; i++) {
+      const fila = datos[i];
+      if (!fila[0]) continue;
+      const tipo = String(fila[2] || '').trim();
+      if (!tipo || tipo === 'cliente') continue;
+      const fecha = normalizarFechaPos_(fila[0]);
+      if (fecha.substring(0, 7) !== mes) continue;
+      const monto = Math.abs(parseFloat(fila[3]) || 0);
+      if (!monto) continue;
+      gastos.push({
+        fecha: fecha,
+        hora: normalizarHoraPos_(fila[1]),
+        detalle: tipo,
+        monto: monto,
+        pagado: fila[4] === true || String(fila[4]).toUpperCase() === 'TRUE',
+      });
+    }
+  });
+
+  gastos.sort(function (a, b) { return (a.fecha + a.hora) < (b.fecha + b.hora) ? -1 : 1; });
+
+  let proveedores = [];
+  const hojaProv = spreadsheet.getSheetByName('proveedores');
+  if (hojaProv) {
+    proveedores = hojaProv.getDataRange().getValues().slice(1)
+      .map(function (f) { return String(f[0] || '').trim(); })
+      .filter(function (n) { return n.length > 0; });
+  }
+
+  return { ok: true, servicio: 'pos-planilla', mes: mes, gastos: gastos, proveedores: proveedores };
+}
+
+// Igual que normalizarHora() del bot: Sheets convierte "21:12" en una hora real.
+function normalizarHoraPos_(valorCelda) {
+  if (valorCelda instanceof Date) {
+    return Utilities.formatDate(valorCelda, POS_CONFIG.TIMEZONE, 'HH:mm');
+  }
+  return String(valorCelda || '').trim().substring(0, 5);
+}
+
 // Igual que normalizarFecha() del bot: nunca re-parsear un texto con new Date().
 function normalizarFechaPos_(valorCelda) {
   if (valorCelda instanceof Date) {
@@ -421,4 +498,16 @@ function probarVentaPos() {
     }],
   });
   Logger.log(JSON.stringify(r));
+}
+
+// Muestra en el registro los gastos del mes en curso, como los ve el POS.
+function probarGastosPos() {
+  const cfg = leerConfigPos_();
+  const mes = Utilities.formatDate(new Date(), POS_CONFIG.TIMEZONE, 'yyyy-MM');
+  const r = leerGastosPos_({ token: cfg.posToken, mes: mes }, cfg);
+  if (!r.ok) { Logger.log(JSON.stringify(r)); return; }
+  Logger.log(mes + ': ' + r.gastos.length + ' gastos, ' + r.proveedores.length + ' proveedores en la lista');
+  r.gastos.slice(-10).forEach(function (g) {
+    Logger.log(g.fecha + ' ' + g.hora + '  ' + g.detalle + '  ' + g.monto + (g.pagado ? '' : '  (a pagar)'));
+  });
 }

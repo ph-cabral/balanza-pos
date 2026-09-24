@@ -1385,10 +1385,138 @@
     });
   }
 
+  // --- Gastos por proveedor (planilla de Google, mismo mes que Totales)
+  var gastosPedido = null;          // mes del ultimo pedido (descarta respuestas viejas)
+  var gastosAbiertos = {};          // proveedor -> true si se ve el detalle
+  var fmtHora = new Intl.DateTimeFormat('es-AR', { hour: '2-digit', minute: '2-digit' });
+
+  function avisoGastos(texto, tipo) {
+    var a = $('gAviso');
+    a.hidden = !texto;
+    a.className = 'gastos-aviso' + (tipo ? ' ' + tipo : '');
+    a.textContent = texto || '';
+  }
+
+  function pintarGastos(g) {
+    if (g.mes !== gastosPedido) return;
+    $('gMesNombre').textContent = nombreMes(g.mes);
+    var tb = $('tablaGastos');
+    tb.innerHTML = '';
+
+    if (!g.habilitado) {
+      avisoGastos('Los gastos se leen de la planilla de Google y la conexión no está configurada en esta PC (' +
+        (g.motivo || 'falta sheets.url o sheets.token') + ').', '');
+      $('gCuerpo').hidden = true;
+      $('gActualizado').textContent = '';
+      return;
+    }
+    if (g.error && !g.proveedores) {
+      avisoGastos('No se pudieron leer los gastos: ' + g.error, 'error');
+      $('gCuerpo').hidden = true;
+      $('gActualizado').textContent = '';
+      return;
+    }
+    avisoGastos(g.error ? 'Mostrando la última lectura; no se pudo actualizar: ' + g.error : '', g.error ? 'error' : '');
+    $('gCuerpo').hidden = false;
+    $('gActualizado').textContent = g.actualizado ? 'Leído ' + fmtHora.format(new Date(g.actualizado)) : '';
+
+    $('gTotal').textContent = plata(g.total_pagado_centavos);
+    $('gAPagar').textContent = g.total_a_pagar_centavos ? plata(g.total_a_pagar_centavos) : '—';
+    $('gCantProv').textContent = g.proveedores.filter(function (p) { return p.es_proveedor; }).length;
+    $('gMovs').textContent = g.cantidad;
+
+    if (!g.proveedores.length) {
+      tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--texto-tenue);padding:24px">Sin gastos cargados en este mes.</td></tr>';
+      return;
+    }
+
+    var maxPagado = g.proveedores.reduce(function (mx, p) { return Math.max(mx, p.pagado_centavos); }, 0);
+    var hayOtros = g.proveedores.some(function (p) { return !p.es_proveedor; });
+    var hayProv = g.proveedores.some(function (p) { return p.es_proveedor; });
+    var bloqueActual = null;
+
+    g.proveedores.forEach(function (p) {
+      if (hayOtros && p.es_proveedor !== bloqueActual) {
+        bloqueActual = p.es_proveedor;
+        if (p.es_proveedor || hayProv) {
+          var trB = document.createElement('tr');
+          trB.className = 'bloque';
+          trB.innerHTML = '<td colspan="5"></td>';
+          trB.firstChild.textContent = p.es_proveedor ? 'Proveedores' : 'Otros gastos (no están en la lista de proveedores)';
+          tb.appendChild(trB);
+        }
+      }
+
+      var abierto = !!gastosAbiertos[p.nombre];
+      var pct = g.total_pagado_centavos ? (p.pagado_centavos * 100 / g.total_pagado_centavos) : 0;
+      var tr = document.createElement('tr');
+      tr.className = 'clic' + (abierto ? ' abierto' : '');
+      tr.innerHTML =
+        '<td class="prov"><span class="flecha">' + (abierto ? '▾' : '▸') + '</span><span class="nom"></span>' +
+          (p.a_pagar_centavos ? '<div class="solo-cel apagar num">a pagar ' + plata(p.a_pagar_centavos) + '</div>' : '') + '</td>' +
+        '<td class="der num col-mov">' + p.cantidad + '</td>' +
+        '<td class="der num apagar col-apagar">' + (p.a_pagar_centavos ? plata(p.a_pagar_centavos) : '') + '</td>' +
+        celdaTotal(p.pagado_centavos, maxPagado) +
+        '<td class="der num pct">' + (p.pagado_centavos ? pct.toFixed(1).replace('.', ',') + '%' : '—') + '</td>';
+      tr.querySelector('.nom').textContent = p.nombre;
+      tr.title = p.cantidad + ' movimiento' + (p.cantidad === 1 ? '' : 's') + ' · total ' + plata(p.total_centavos);
+      tr.addEventListener('click', function () {
+        gastosAbiertos[p.nombre] = !gastosAbiertos[p.nombre];
+        pintarGastos(g);
+      });
+      tb.appendChild(tr);
+
+      if (abierto) {
+        p.movimientos.forEach(function (m) {
+          var f = m.fecha.split('-');
+          var trM = document.createElement('tr');
+          trM.className = 'mov';
+          trM.innerHTML =
+            '<td class="num">' + f[2] + '/' + f[1] + (m.hora ? ' · ' + m.hora : '') + '</td>' +
+            '<td class="col-mov"></td>' +
+            '<td class="der num apagar col-apagar">' + (m.pagado ? '' : plata(m.monto_centavos)) + '</td>' +
+            '<td class="der num">' + (m.pagado ? plata(m.monto_centavos)
+              : '<span class="solo-cel apagar">' + plata(m.monto_centavos) + ' </span><span class="pill apagar">a pagar</span>') + '</td>' +
+            '<td class="pct"></td>';
+          tb.appendChild(trM);
+        });
+      }
+    });
+
+    var trT = document.createElement('tr');
+    trT.className = 'fila-total';
+    trT.innerHTML =
+      '<td>Total</td><td class="der num col-mov">' + g.cantidad + '</td>' +
+      '<td class="der num apagar col-apagar">' + (g.total_a_pagar_centavos ? plata(g.total_a_pagar_centavos) : '') + '</td>' +
+      '<td class="der num">' + plata(g.total_pagado_centavos) + '</td><td class="der num pct">100%</td>';
+    tb.appendChild(trT);
+  }
+
+  function cargarGastos(mes, refrescar) {
+    if (!mes) return;
+    if (mes !== gastosPedido) gastosAbiertos = {};
+    gastosPedido = mes;
+    $('gMesNombre').textContent = nombreMes(mes);
+    $('gActualizado').textContent = 'Leyendo la planilla…';
+    var b = $('btnGastosActualizar');
+    b.disabled = true;
+    api('/api/gastos?mes=' + encodeURIComponent(mes) + (refrescar ? '&refrescar=1' : ''))
+      .then(function (d) { pintarGastos(d.gastos); })
+      .catch(function (e) {
+        if (mes !== gastosPedido) return;
+        avisoGastos('No se pudieron leer los gastos: ' + e.message, 'error');
+        $('gCuerpo').hidden = true;
+        $('gActualizado').textContent = '';
+      })
+      .then(function () { if (mes === gastosPedido) b.disabled = false; });
+  }
+
+  $('btnGastosActualizar').addEventListener('click', function () { cargarGastos(mesElegido, true); });
+
   function cargarTotales(mes) {
     var m = mes || mesElegido;
     api('/api/ventas/totales' + (m ? '?mes=' + encodeURIComponent(m) : ''))
-      .then(pintarTotales)
+      .then(function (d) { pintarTotales(d); cargarGastos(d.mes); })
       .catch(function (e) { avisar(e.message, 'error'); });
   }
 
