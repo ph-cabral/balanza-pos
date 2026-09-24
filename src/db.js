@@ -468,6 +468,29 @@ const S = {
     GROUP BY estacion ORDER BY estacion
   `),
 
+  // Totales para Administracion -> Ventas. `fecha` es texto local
+  // 'AAAA-MM-DD HH:MM:SS', asi que el dia y el mes salen con substr y el
+  // rango del mes usa el indice ix_ventas_fecha.
+  totalesPorMes: db.prepare(`
+    SELECT substr(fecha, 1, 7) AS mes,
+           COUNT(*) AS ventas,
+           COALESCE(SUM(total_centavos), 0) AS total_centavos,
+           COUNT(DISTINCT substr(fecha, 1, 10)) AS dias_con_ventas
+    FROM ventas
+    GROUP BY mes ORDER BY mes DESC LIMIT ?
+  `),
+
+  totalesPorDia: db.prepare(`
+    SELECT substr(fecha, 1, 10) AS dia,
+           COUNT(*) AS ventas,
+           COALESCE(SUM(total_centavos), 0) AS total_centavos
+    FROM ventas
+    WHERE fecha >= @desde AND fecha < @hasta
+    GROUP BY dia ORDER BY dia
+  `),
+
+  hoyLocal: db.prepare(`SELECT date('now','localtime') AS hoy`),
+
   sheetsEncolar: db.prepare(`INSERT OR IGNORE INTO sheets_cola (venta_id) VALUES (?)`),
   sheetsPendientes: db.prepare(`
     SELECT c.venta_id AS id, v.fecha, v.total_centavos
@@ -777,6 +800,45 @@ const api = {
   },
   resumenDia: () => S.resumenDia.get(),
   resumenDiaPorEstacion: () => S.resumenDiaPorEstacion.all(),
+
+  // Total vendido por dia (del mes pedido, 'AAAA-MM'; por defecto el actual)
+  // y por mes (ultimos `meses`). Los dias sin ventas vienen en 0 para que se
+  // vea cuando no se vendio; del mes en curso, solo hasta hoy.
+  totalesVentas: (mesPedido, meses = 24) => {
+    const hoy = S.hoyLocal.get().hoy; // 'AAAA-MM-DD'
+    const mesActual = hoy.slice(0, 7);
+    const mes = /^\d{4}-(0[1-9]|1[0-2])$/.test(mesPedido || '') ? mesPedido : mesActual;
+
+    const [a, m] = mes.split('-').map(Number);
+    const sig = m === 12 ? `${a + 1}-01` : `${a}-${String(m + 1).padStart(2, '0')}`;
+    const filas = S.totalesPorDia.all({ desde: `${mes}-01 00:00:00`, hasta: `${sig}-01 00:00:00` });
+    const porDia = new Map(filas.map((f) => [f.dia, f]));
+
+    const diasEnMes = new Date(a, m, 0).getDate();
+    let ultimo = diasEnMes;
+    if (mes === mesActual) ultimo = Number(hoy.slice(8, 10));
+    else if (mes > mesActual) ultimo = 0;
+
+    const dias = [];
+    for (let d = 1; d <= ultimo; d++) {
+      const dia = `${mes}-${String(d).padStart(2, '0')}`;
+      const f = porDia.get(dia);
+      dias.push({ dia, ventas: f ? f.ventas : 0, total_centavos: f ? f.total_centavos : 0 });
+    }
+
+    const totalMes = filas.reduce((acc, f) => ({
+      ventas: acc.ventas + f.ventas,
+      total_centavos: acc.total_centavos + f.total_centavos,
+    }), { ventas: 0, total_centavos: 0 });
+
+    return {
+      hoy,
+      mes,
+      dias,
+      totalMes: { ...totalMes, dias_con_ventas: filas.length },
+      meses: S.totalesPorMes.all(Math.min(120, Math.max(1, meses))),
+    };
+  },
 
   // --- Cola de Google Sheets ---
   sheetsPendientes: (limite = 50) => S.sheetsPendientes.all(limite),

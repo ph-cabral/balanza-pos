@@ -123,6 +123,13 @@ Cada **estación** es un puesto de venta con su balanza y su escáner. Se arman 
 - Cada venta queda marcada con su estación; en Ventas se ve el total del día por
   estación.
 
+**Totales por día y por mes:** Administración → Ventas → "Totales por día y por
+mes". A la izquierda, los días del mes elegido (el más reciente arriba, los días
+sin ventas en gris) con cantidad de ventas y total, más el total del mes, las
+ventas y el promedio por día con ventas. A la derecha, los meses (hasta 24) con
+su total; tocando uno se ven sus días. Suma todas las estaciones y sale de la base
+del POS (`data/pos.db`), no de la planilla. API: `GET /api/ventas/totales?mes=AAAA-MM`.
+
 **Balanzas:** con dos balanzas iguales hay dos adaptadores FTDI y Windows les puede
 cambiar el número de COM. Atar cada una a su cable con el **número de serie del
 adaptador**: Administración → Estaciones → Puertos de esta PC → "Asignar a…"

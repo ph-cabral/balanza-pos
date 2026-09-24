@@ -1304,8 +1304,99 @@
       .then(function () { b.disabled = false; });
   });
 
+  // --- Totales por dia y por mes
+  var mesElegido = null; // 'AAAA-MM'; null = el mes en curso
+  var fmtMes = new Intl.DateTimeFormat('es-AR', { month: 'long', year: 'numeric' });
+  var fmtSemana = new Intl.DateTimeFormat('es-AR', { weekday: 'short' });
+
+  function nombreMes(mes) {
+    var p = mes.split('-');
+    var t = fmtMes.format(new Date(Number(p[0]), Number(p[1]) - 1, 1)); // 'septiembre de 2026'
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  }
+
+  function celdaTotal(centavos, maximo) {
+    var ancho = maximo > 0 ? Math.max(2, Math.round((centavos / maximo) * 100)) : 0;
+    return '<td class="der num celda-total">' + (centavos ? plata(centavos) : '—') +
+      (centavos ? '<div class="barra" style="width:' + ancho + '%"></div>' : '') + '</td>';
+  }
+
+  function pintarTotales(d) {
+    mesElegido = d.mes;
+    var mesActual = d.hoy.slice(0, 7);
+
+    // Selector: los meses con ventas, mas el actual y el elegido aunque no tengan.
+    var lista = d.meses.map(function (m) { return m.mes; });
+    [mesActual, d.mes].forEach(function (m) { if (lista.indexOf(m) < 0) lista.push(m); });
+    lista.sort().reverse();
+    var sel = $('tMes');
+    sel.innerHTML = '';
+    lista.forEach(function (m) {
+      var o = document.createElement('option');
+      o.value = m;
+      o.textContent = nombreMes(m) + (m === mesActual ? ' (en curso)' : '');
+      sel.appendChild(o);
+    });
+    sel.value = d.mes;
+
+    var tm = d.totalMes;
+    $('tMesTotal').textContent = plata(tm.total_centavos);
+    $('tMesVentas').textContent = tm.ventas;
+    $('tMesPromedio').textContent = plata(tm.dias_con_ventas ? Math.round(tm.total_centavos / tm.dias_con_ventas) : 0);
+
+    // Por dia: el mas reciente arriba; los dias sin ventas quedan en gris.
+    var maxDia = d.dias.reduce(function (mx, x) { return Math.max(mx, x.total_centavos); }, 0);
+    var tbD = $('tablaDias');
+    tbD.innerHTML = '';
+    if (!d.dias.length) {
+      tbD.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--texto-tenue);padding:24px">Sin días para mostrar.</td></tr>';
+    }
+    d.dias.slice().reverse().forEach(function (x) {
+      var p = x.dia.split('-');
+      var fecha = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+      var tr = document.createElement('tr');
+      if (!x.ventas) tr.className = 'cero';
+      if (x.dia === d.hoy) tr.className += ' hoy';
+      tr.innerHTML =
+        '<td class="num"><span class="dia-sem">' + fmtSemana.format(fecha).replace('.', '').replace(/^./, function (c) { return c.toUpperCase(); }) + '</span>' +
+          p[2] + '/' + p[1] + (x.dia === d.hoy ? ' · hoy' : '') + '</td>' +
+        '<td class="der num">' + (x.ventas || '—') + '</td>' +
+        celdaTotal(x.total_centavos, maxDia);
+      tbD.appendChild(tr);
+    });
+
+    // Por mes: el mas reciente arriba; tocar uno muestra sus dias.
+    var maxMes = d.meses.reduce(function (mx, x) { return Math.max(mx, x.total_centavos); }, 0);
+    var tbM = $('tablaMeses');
+    tbM.innerHTML = '';
+    if (!d.meses.length) {
+      tbM.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--texto-tenue);padding:24px">Todavía no hay ventas.</td></tr>';
+    }
+    d.meses.forEach(function (x) {
+      var tr = document.createElement('tr');
+      tr.className = 'clic' + (x.mes === d.mes ? ' elegido' : '');
+      tr.innerHTML =
+        '<td><span class="mes-nombre">' + nombreMes(x.mes) + '</span></td>' +
+        '<td class="der num">' + x.ventas + '</td>' +
+        celdaTotal(x.total_centavos, maxMes);
+      tr.title = x.dias_con_ventas + ' día' + (x.dias_con_ventas === 1 ? '' : 's') + ' con ventas';
+      tr.addEventListener('click', function () { cargarTotales(x.mes); });
+      tbM.appendChild(tr);
+    });
+  }
+
+  function cargarTotales(mes) {
+    var m = mes || mesElegido;
+    api('/api/ventas/totales' + (m ? '?mes=' + encodeURIComponent(m) : ''))
+      .then(pintarTotales)
+      .catch(function (e) { avisar(e.message, 'error'); });
+  }
+
+  $('tMes').addEventListener('change', function () { cargarTotales(this.value); });
+
   function cargarVentas() {
     cargarSheets();
+    cargarTotales();
     api('/api/ventas?limite=60').then(function (d) {
       $('vCantidad').textContent = d.resumen.ventas;
       $('vTotal').textContent = plata(d.resumen.total_centavos);

@@ -140,6 +140,28 @@ async function esperarEstable(intentos = 25) {
     const resumen = await get('/ventas');
     chequear('cuenta las ventas del dia', resumen.ok && resumen.resumen.ventas >= 2, JSON.stringify(resumen.resumen));
 
+    console.log('\n8. Totales por dia y por mes');
+    const tot = await get('/ventas/totales');
+    const hoyTot = tot.ok && tot.dias.find((x) => x.dia === tot.hoy);
+    chequear('devuelve el mes en curso', tot.ok && tot.mes === tot.hoy.slice(0, 7), tot.mes);
+    chequear('trae todos los dias del mes hasta hoy', tot.ok && tot.dias.length === Number(tot.hoy.slice(8, 10)), tot.dias && tot.dias.length + ' dias');
+    chequear(
+      'el total de hoy coincide con el resumen del dia',
+      hoyTot && hoyTot.total_centavos === resumen.resumen.total_centavos && hoyTot.ventas === resumen.resumen.ventas,
+      hoyTot && `${hoyTot.total_centavos} / ${resumen.resumen.total_centavos}`
+    );
+    const sumaDias = tot.ok ? tot.dias.reduce((a, x) => a + x.total_centavos, 0) : -1;
+    const mesTot = tot.ok && tot.meses.find((m) => m.mes === tot.mes);
+    chequear(
+      'la suma de los dias da el total del mes',
+      mesTot && sumaDias === tot.totalMes.total_centavos && sumaDias === mesTot.total_centavos,
+      `${sumaDias} / ${tot.totalMes && tot.totalMes.total_centavos}`
+    );
+    const vacio = await get('/ventas/totales?mes=2001-02');
+    chequear('mes sin ventas: 28 dias en cero', vacio.ok && vacio.dias.length === 28 && vacio.totalMes.total_centavos === 0);
+    const malo = await get('/ventas/totales?mes=basura');
+    chequear('mes invalido cae en el actual', malo.ok && malo.mes === tot.mes);
+
     console.log('\n---------------------------------------------');
     if (fallos === 0) {
       console.log('  Todo OK.');

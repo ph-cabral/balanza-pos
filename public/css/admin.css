@@ -305,3 +305,46 @@ td select.asignar {
 }
 .btn:disabled { opacity: .5; cursor: default; }
 .barra-guardar:not(.sucio) { position: static; box-shadow: none; }
+
+/* Ventas: totales por dia y por mes */
+.totales-grilla {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 20px;
+  align-items: start;
+}
+.totales-cab { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; min-height: 38px; }
+.totales-cab h3 { margin: 0; white-space: nowrap; font-size: 14px; font-weight: 700; color: var(--texto-medio); text-transform: uppercase; letter-spacing: .5px; }
+.totales-cab select {
+  height: 38px; padding: 0 10px; min-width: 0;
+  background: var(--fondo); border: 1px solid var(--borde); border-radius: var(--radio-chico); color: var(--texto);
+  font: inherit; font-size: 14px;
+}
+.totales-stats { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.totales-stats .stat { padding: 12px 14px; }
+.totales-stats .stat-valor { font-size: 20px; }
+.totales-tabla { max-height: 460px; overflow-y: auto; margin-top: 12px; }
+.totales-tabla thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
+.totales-tabla td { padding: 8px 12px; }
+.totales-tabla tr.cero td { color: var(--texto-tenue); }
+.totales-tabla tr.hoy td { background: var(--panel-alto); }
+.totales-tabla tr.hoy td:first-child { box-shadow: inset 3px 0 0 var(--acento); }
+.totales-tabla tr.elegido td { background: var(--panel-alto); }
+.totales-tabla tr.elegido td:first-child { box-shadow: inset 3px 0 0 var(--acento); }
+.totales-tabla tr.clic { cursor: pointer; }
+.totales-tabla .dia-sem { display: inline-block; width: 42px; color: var(--texto-tenue); }
+#tablaDias td:first-child { white-space: nowrap; }
+.celda-total { min-width: 130px; }
+.celda-total .barra { height: 4px; margin-top: 5px; border-radius: 2px; background: var(--acento); opacity: .55; margin-left: auto; }
+.totales-tabla tfoot td { font-weight: 700; border-top: 1px solid var(--borde); border-bottom: 0; }
+
+@media (max-width: 820px) {
+  .totales-grilla { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  .totales-stats { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .totales-stats .stat:first-child { grid-column: 1 / -1; }
+  .totales-tabla td, .totales-tabla th { padding-left: 6px; padding-right: 6px; }
+  .celda-total { min-width: 0; }
+  .totales-tabla .dia-sem { width: 36px; }
+}

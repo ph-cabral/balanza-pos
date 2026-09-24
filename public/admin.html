@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0f1419">
 <title>Administración · Balanza POS</title>
 <link rel="stylesheet" href="/css/app.css?v=5">
-<link rel="stylesheet" href="/css/admin.css?v=5">
+<link rel="stylesheet" href="/css/admin.css?v=6">
 </head>
 <body>
 
@@ -341,6 +341,40 @@ Gaseosa 500ml;Coca Cola;Bebidas;unidad;1500;7790895000997"></textarea>
       <div class="stats" id="vPorEstacion" style="margin-top:12px" hidden></div>
     </div>
 
+    <div class="panel" id="panelTotales">
+      <h2>Totales por día y por mes</h2>
+      <p class="ayuda">Todo lo vendido en el POS, sumando todas las estaciones.
+        Tocá un mes en «Por mes» para ver sus días.</p>
+      <div class="totales-grilla">
+        <div class="totales-bloque">
+          <div class="totales-cab">
+            <h3>Por día</h3>
+            <select id="tMes" aria-label="Mes"></select>
+          </div>
+          <div class="stats totales-stats">
+            <div class="stat"><div class="stat-label">Total del mes</div><div class="stat-valor num" id="tMesTotal">$ 0,00</div></div>
+            <div class="stat"><div class="stat-label">Ventas</div><div class="stat-valor num" id="tMesVentas">0</div></div>
+            <div class="stat"><div class="stat-label">Promedio por día con ventas</div><div class="stat-valor num" id="tMesPromedio">$ 0,00</div></div>
+          </div>
+          <div class="tabla-wrap totales-tabla">
+            <table>
+              <thead><tr><th>Día</th><th class="der">Ventas</th><th class="der">Total</th></tr></thead>
+              <tbody id="tablaDias"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="totales-bloque">
+          <div class="totales-cab"><h3>Por mes</h3></div>
+          <div class="tabla-wrap totales-tabla">
+            <table>
+              <thead><tr><th>Mes</th><th class="der">Ventas</th><th class="der">Total</th></tr></thead>
+              <tbody id="tablaMeses"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="panel" id="panelSheets" hidden>
       <h2>Copia a Google Sheets</h2>
       <p class="ayuda">Mientras dure la transición, cada venta se copia también a la planilla
@@ -375,6 +409,6 @@ Gaseosa 500ml;Coca Cola;Bebidas;unidad;1500;7790895000997"></textarea>
 
 <div class="avisos" id="avisos"></div>
 
-<script src="/js/admin.js?v=5"></script>
+<script src="/js/admin.js?v=6"></script>
 </body>
 </html>

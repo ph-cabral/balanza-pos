@@ -293,6 +293,12 @@ module.exports = function crearApi({ estaciones, guardarConfig, config, sheets }
     });
   });
 
+  // Total vendido por dia (del mes ?mes=AAAA-MM, por defecto el actual) y por
+  // mes. Declarada antes de /ventas/:id para que 'totales' no se tome como id.
+  router.get('/ventas/totales', (req, res) => {
+    ok(res, db.totalesVentas(String(req.query.mes || ''), Number(req.query.meses) || 24));
+  });
+
   // --- Copia a Google Sheets (transicion) ----------------------------------
 
   router.get('/sheets/estado', (_req, res) => {
