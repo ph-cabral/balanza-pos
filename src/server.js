@@ -28,7 +28,37 @@ function leerConfig() {
     fs.copyFileSync(path.join(RAIZ, 'config.example.json'), RUTA_CONFIG);
     console.log('  config.json no existía: se creó desde config.example.json');
   }
-  return JSON.parse(fs.readFileSync(RUTA_CONFIG, 'utf8'));
+  const cfg = JSON.parse(fs.readFileSync(RUTA_CONFIG, 'utf8').replace(/^\uFEFF/, ''));
+  aplicarConfigComun(cfg);
+  return cfg;
+}
+
+// config.comun.json SI va en git: lo que es igual en todas las PC del POS (por
+// ejemplo la URL del webapp de Apps Script). Lo que define pisa a config.json,
+// asi un cambio llega a la PC del POS con el despliegue automatico sin tener que
+// entrar a editarla. Las claves (sheets.token) siguen solo en config.json.
+function aplicarConfigComun(cfg) {
+  const ruta = path.join(RAIZ, 'config.comun.json');
+  let comun;
+  try {
+    comun = JSON.parse(fs.readFileSync(ruta, 'utf8').replace(/^\uFEFF/, ''));
+  } catch (e) {
+    if (e.code !== 'ENOENT') console.warn(`  config.comun.json no se pudo leer: ${e.message}`);
+    return;
+  }
+  const esObjeto = (v) => v && typeof v === 'object' && !Array.isArray(v);
+  (function mezclar(destino, origen, prefijo) {
+    for (const [k, v] of Object.entries(origen)) {
+      if (k.startsWith('_')) continue; // comentarios
+      if (esObjeto(v)) {
+        if (!esObjeto(destino[k])) destino[k] = {};
+        mezclar(destino[k], v, `${prefijo}${k}.`);
+      } else if (destino[k] !== v) {
+        if (destino[k] !== undefined) console.log(`  config.comun.json: ${prefijo}${k} actualizado`);
+        destino[k] = v;
+      }
+    }
+  })(cfg, comun, '');
 }
 
 // Version instalada: la escribe el actualizador automatico (instalador/actualizar.ps1)

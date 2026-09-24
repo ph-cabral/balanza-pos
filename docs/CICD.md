@@ -151,3 +151,17 @@ nueva.
     config.example.json            config por defecto de una PC nueva
 
 El zip de `empaquetar.bat` sigue sirviendo para una PC sin internet.
+
+## Configuración común (`config.comun.json`)
+
+`config.json` es de cada PC y no está en git, así que el despliegue automático
+**no lo cambia**. Lo que tiene que ser igual en todas las PC del POS va en
+`config.comun.json`, que sí se versiona: al arrancar, el servidor lo mezcla sobre
+`config.json` y lo que define ahí manda (en consola/log aparece
+`config.comun.json: <clave> actualizado`). Las claves con `_` son comentarios.
+
+Hoy lleva solo `sheets.url` (la URL `/exec` del proyecto de Apps Script
+"POS → Planilla"). **No poner claves**: `sheets.token` sigue solo en el
+`config.json` de cada PC. Para cambiar la URL: editar `config.comun.json`, commit y
+push a `main`; cuando pasen las pruebas, la PC del POS la toma en el próximo
+despliegue y manda sola las ventas que hayan quedado pendientes.

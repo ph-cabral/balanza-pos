@@ -26,7 +26,7 @@ const RAIZ = path.join(__dirname, '..');
 const DIST = path.join(RAIZ, 'dist');
 const DESTINO = path.join(DIST, 'BalanzaPOS');
 
-const COPIAR = ['src', 'public', 'scripts', 'node_modules', 'config.json', 'config.example.json', 'package.json', 'package-lock.json', 'README.md'];
+const COPIAR = ['src', 'public', 'scripts', 'node_modules', 'config.json', 'config.example.json', 'config.comun.json', 'package.json', 'package-lock.json', 'README.md'];
 const INSTALADOR = path.join(RAIZ, 'instalador');
 
 function sello() {

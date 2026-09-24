@@ -1,0 +1,6 @@
+{
+  "_nota": "Igual en todas las PC del POS. Va en git y pisa a config.json. No poner claves aca (el token de Sheets queda en config.json de cada PC).",
+  "sheets": {
+    "url": "https://script.google.com/macros/s/AKfycbx84AVDvtLNQKCLbPE5PYULaOIQ_--cCLvYOfGyQhB9Kd-6JQqp9KuCQtz77wbXKS9UYg/exec"
+  }
+}
