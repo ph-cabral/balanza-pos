@@ -354,6 +354,42 @@ CREATE TABLE IF NOT EXISTS planilla_proveedores (
 );
 `);
 
+// --- Descuentos -------------------------------------------------------------
+// Lista corta (5 o 6) que se elige desde el POS. tipo 'porcentaje' -> valor en
+// % entero (1..100); tipo 'monto' -> valor en centavos. Borrado fisico: la venta
+// guarda nombre y monto del descuento aplicado (snapshot), no el id.
+db.exec(`
+CREATE TABLE IF NOT EXISTS descuentos (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre    TEXT    NOT NULL,
+  tipo      TEXT    NOT NULL CHECK (tipo IN ('porcentaje','monto')),
+  valor     INTEGER NOT NULL CHECK (valor > 0),
+  creado_en TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+);
+`);
+{
+  const cols = db.prepare(`PRAGMA table_info(ventas)`).all().map((c) => c.name);
+  if (!cols.includes('descuento_nombre')) db.exec(`ALTER TABLE ventas ADD COLUMN descuento_nombre TEXT NOT NULL DEFAULT ''`);
+  if (!cols.includes('descuento_centavos')) db.exec(`ALTER TABLE ventas ADD COLUMN descuento_centavos INTEGER NOT NULL DEFAULT 0`);
+}
+
+// Pesables: el subtotal se redondea SIEMPRE para arriba a multiplo de $100
+// (6215 -> 6300). Misma regla en public/js/pos.js.
+const REDONDEO_PESABLE_CENTAVOS = 10000;
+function subtotalPesable(gramos, precioKgCentavos) {
+  const r = REDONDEO_PESABLE_CENTAVOS;
+  // gramos * precio / 1000 = centavos; ceil sobre enteros para evitar flotantes.
+  return Math.ceil((gramos * precioKgCentavos) / (1000 * r)) * r;
+}
+
+// Descuento sobre el total bruto, en pesos enteros; nunca mayor que el total.
+function montoDescuento(d, brutoCentavos) {
+  const m = d.tipo === 'porcentaje'
+    ? Math.round((brutoCentavos * d.valor) / 10000) * 100
+    : d.valor;
+  return Math.min(brutoCentavos, Math.max(0, m));
+}
+
 // --- Sentencias preparadas --------------------------------------------------
 const S = {
   listarProductos: db.prepare(`
@@ -476,8 +512,14 @@ const S = {
   `),
 
   insertarVenta: db.prepare(`
-    INSERT INTO ventas (total_centavos, items_count, estacion_id, estacion) VALUES (?, ?, ?, ?)
+    INSERT INTO ventas (total_centavos, items_count, estacion_id, estacion, descuento_nombre, descuento_centavos)
+    VALUES (?, ?, ?, ?, ?, ?)
   `),
+
+  listarDescuentos: db.prepare(`SELECT id, nombre, tipo, valor FROM descuentos ORDER BY id`),
+  descuentoPorId: db.prepare(`SELECT id, nombre, tipo, valor FROM descuentos WHERE id = ?`),
+  insertarDescuento: db.prepare(`INSERT INTO descuentos (nombre, tipo, valor) VALUES (@nombre, @tipo, @valor)`),
+  borrarDescuento: db.prepare(`DELETE FROM descuentos WHERE id = ?`),
 
   insertarItem: db.prepare(`
     INSERT INTO venta_items
@@ -492,7 +534,8 @@ const S = {
   `),
 
   ventaPorId: db.prepare(`
-    SELECT id, fecha, total_centavos, items_count, estado, arca_estado, arca_cae, estacion_id, estacion, origen
+    SELECT id, fecha, total_centavos, items_count, estado, arca_estado, arca_cae, estacion_id, estacion, origen,
+           descuento_nombre, descuento_centavos
     FROM ventas WHERE id = ?
   `),
 
@@ -848,7 +891,7 @@ const api = {
       // peso  -> cantidad en gramos, precio por kilo
       // unidad-> cantidad en unidades, precio por unidad
       const subtotal = tipo === 'peso'
-        ? Math.round((cantidad * precio) / 1000)
+        ? subtotalPesable(cantidad, precio)
         : cantidad * precio;
 
       return {
@@ -864,9 +907,18 @@ const api = {
       };
     });
 
-    const total = preparados.reduce((a, it) => a + it.subtotal_centavos, 0);
+    const bruto = preparados.reduce((a, it) => a + it.subtotal_centavos, 0);
+    let descNombre = '';
+    let descMonto = 0;
+    if (opciones.descuento_id) {
+      const d = S.descuentoPorId.get(Number(opciones.descuento_id));
+      if (!d) throw new Error('El descuento elegido ya no existe');
+      descNombre = d.nombre;
+      descMonto = montoDescuento(d, bruto);
+    }
+    const total = bruto - descMonto;
     const est = opciones.estacion || null;
-    const info = S.insertarVenta.run(total, preparados.length, est ? est.id : null, est ? est.nombre : '');
+    const info = S.insertarVenta.run(total, preparados.length, est ? est.id : null, est ? est.nombre : '', descNombre, descMonto);
     const ventaId = info.lastInsertRowid;
 
     for (const it of preparados) {
@@ -875,8 +927,25 @@ const api = {
 
     if (opciones.sheets) S.sheetsEncolar.run(ventaId);
 
-    return { id: ventaId, total_centavos: total, items: preparados.length, estacion: est ? est.nombre : '' };
+    return {
+      id: ventaId, total_centavos: total, items: preparados.length, estacion: est ? est.nombre : '',
+      descuento_nombre: descNombre, descuento_centavos: descMonto,
+    };
   }),
+
+  // --- Descuentos ---
+  listarDescuentos: () => S.listarDescuentos.all(),
+  crearDescuento: (d) => {
+    const nombre = String((d && d.nombre) || '').trim().slice(0, 40);
+    const tipo = d && d.tipo === 'monto' ? 'monto' : 'porcentaje';
+    const valor = Math.round(Number(d && d.valor) || 0);
+    if (!nombre) throw new Error('Falta el nombre del descuento');
+    if (tipo === 'porcentaje' && (valor < 1 || valor > 100)) throw new Error('El porcentaje va de 1 a 100');
+    if (tipo === 'monto' && valor < 1) throw new Error('El monto tiene que ser mayor a cero');
+    const id = S.insertarDescuento.run({ nombre, tipo, valor }).lastInsertRowid;
+    return S.descuentoPorId.get(id);
+  },
+  borrarDescuento: (id) => S.borrarDescuento.run(id).changes,
 
   ventasRecientes: (limite = 50) => S.ventasRecientes.all(limite),
   ventaPorId: (id) => {

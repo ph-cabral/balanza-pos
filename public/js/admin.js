@@ -1776,6 +1776,11 @@
             cant.padStart(28) + plata(i.subtotal_centavos).padStart(14);
         }).join('\n') +
         '\n-----------------------------------------------\n' +
+        (v.descuento_centavos
+          ? 'Subtotal'.padEnd(62) + plata(v.total_centavos + v.descuento_centavos).padStart(14) + '\n' +
+            ('Descuento ' + (v.descuento_nombre || '')).padEnd(62).slice(0, 62) +
+            ('-' + plata(v.descuento_centavos)).padStart(14) + '\n'
+          : '') +
         'TOTAL'.padEnd(62) + plata(v.total_centavos).padStart(14);
       caja.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }).catch(function (e) { avisar(e.message, 'error'); });

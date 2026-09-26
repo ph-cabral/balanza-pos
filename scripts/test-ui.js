@@ -150,7 +150,7 @@ function chequear(desc, cond, detalle) {
 
     if (conSimulador) {
       console.log('\n4. Peso: apoyar 250 g y cargar un producto por peso');
-      await pagina.locator('[data-sim="250"]').click();
+      await pagina.evaluate(() => fetch('/api/balanza/simular', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gramos: 250 }) }));
       await estableEn('0,250');
       chequear('la balanza llega a peso estable', true, await pagina.locator('#pesoNumero').textContent() + ' kg');
 
@@ -165,18 +165,18 @@ function chequear(desc, cond, detalle) {
       const detalle = await pagina.locator('.item-detalle').first().textContent();
       chequear('muestra kg × precio por kg', /0,250 kg/.test(detalle), detalle);
 
-      // Jamon cocido: $12.500/kg x 0,250 kg = $3.125
+      // Jamon cocido: $12.500/kg x 0,250 kg = $3.125 -> redondeo para arriba $3.200
       const sub = await pagina.locator('.item-subtotal').first().textContent();
-      chequear('calcula bien el subtotal', sub.replace(/\s/g, '').indexOf('3.125,00') !== -1, sub);
+      chequear('calcula bien el subtotal (redondeado a $100)', sub.replace(/\s/g, '').indexOf('3.200,00') !== -1, sub);
       await pagina.screenshot({ path: path.join(SALIDA, '3-carrito-en-pantalla.png') });
 
       await esperarGrupos();
       chequear('la pantalla vuelve sola a los grupos', await pagina.locator('#vistaGrupos').isVisible());
 
       console.log('\n5. Tara y segundo producto');
-      await pagina.locator('[data-sim="0"]').click();
+      await pagina.evaluate(() => fetch('/api/balanza/simular', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gramos: 0 }) }));
       await estableEn('0,000');
-      await pagina.locator('[data-sim="500"]').click();
+      await pagina.evaluate(() => fetch('/api/balanza/simular', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gramos: 500 }) }));
       await estableEn('0,500');
       await pagina.locator('.grupo', { hasText: 'Quesos' }).first().click();
       await esperar(300);
@@ -184,9 +184,9 @@ function chequear(desc, cond, detalle) {
       await esperar(600);
       chequear('el carrito tiene dos artículos', await pagina.locator('.item').count() === 2);
 
-      // Queso cremoso: $9.800/kg x 0,500 kg = $4.900  -> total $8.025
+      // Queso cremoso: $9.800/kg x 0,500 kg = $4.900  -> total $3.200 + $4.900 = $8.100
       const total1 = await pagina.locator('#total').textContent();
-      chequear('el total suma los dos', total1.replace(/\s/g, '').indexOf('8.025,00') !== -1, total1);
+      chequear('el total suma los dos', total1.replace(/\s/g, '').indexOf('8.100,00') !== -1, total1);
       await esperarGrupos();
     } else {
       console.log('\n4-5. (salteado: la balanza no está en modo simulador)');
@@ -247,14 +247,15 @@ function chequear(desc, cond, detalle) {
 
     await pagina.screenshot({ path: path.join(SALIDA, '5-venta-cerrada.png') });
 
-    console.log('\n9. Búsqueda');
-    await pagina.locator('#buscador').fill('queso');
-    await esperar(400);
-    chequear('la búsqueda muestra resultados de todos los grupos',
-      await pagina.locator('.prod').count() > 0);
-    await pagina.locator('#btnLimpiarBusqueda').click();
-    await esperar(300);
-    chequear('limpiar la búsqueda vuelve a los grupos', await pagina.locator('#vistaGrupos').isVisible());
+    console.log('\n9. Buscador oculto y código sin coincidencia');
+    chequear('no muestra el buscador ni los botones de simulación',
+      !(await pagina.locator('#buscador').isVisible()) && (await pagina.locator('[data-sim]').count()) === 0);
+    await pagina.keyboard.type('0000000000999', { delay: 5 });
+    await pagina.keyboard.press('Enter');
+    await esperar(500);
+    chequear('código sin producto: da error y queda en los grupos',
+      (await pagina.locator('.aviso.error').count()) > 0 && await pagina.locator('#vistaGrupos').isVisible() &&
+      (await pagina.locator('#buscador').inputValue()) === '');
 
     console.log('\n10. Pantalla de administración');
     await pagina.goto(URL + '/admin.html', { waitUntil: 'networkidle' });

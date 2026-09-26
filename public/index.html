@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0f1419">
 <title>Balanza POS</title>
-<link rel="stylesheet" href="/css/app.css?v=7">
+<link rel="stylesheet" href="/css/app.css?v=9">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
 </head>
 <body>
@@ -29,12 +29,6 @@
         </div>
         <span class="chip mal" id="chipEstado"><span class="punto"></span><span id="chipTexto">Conectando…</span></span>
         <span class="chip" id="chipPuerto" hidden></span>
-      </div>
-
-      <div class="peso-acciones" id="accionesSim" hidden>
-        <button class="btn chico" data-sim="250">250 g</button>
-        <button class="btn chico" data-sim="500">500 g</button>
-        <button class="btn chico" data-sim="0">Tara</button>
       </div>
 
       <!-- Accesos: ventas (Administración → Ventas) y administración -->
@@ -62,10 +56,9 @@
       </nav>
     </div>
 
-    <div class="barra-busqueda">
-      <input class="buscador" id="buscador" type="search" inputmode="search"
-             placeholder="Buscar producto o escanear código…" autocomplete="off">
-      <button class="btn" id="btnLimpiarBusqueda">Limpiar</button>
+    <!-- Buscador oculto: solo lo usa el codigo (filtro por texto). -->
+    <div class="barra-busqueda" hidden>
+      <input class="buscador" id="buscador" type="search" autocomplete="off" tabindex="-1">
     </div>
 
     <main class="escenario">
@@ -153,6 +146,12 @@
     </div>
 
     <div class="carrito-pie">
+      <div class="descuento-fila">
+        <button type="button" class="btn-descuento" id="btnDescuento">
+          <span class="desc-ico">%</span><span id="btnDescuentoTexto">Descuento</span>
+        </button>
+        <span class="descuento-monto num" id="descuentoMonto" hidden></span>
+      </div>
       <div class="total-fila">
         <span class="total-label">TOTAL</span>
         <span class="total-valor num" id="total">$ 0,00</span>
@@ -185,10 +184,34 @@
   </div>
 </div>
 
+<!-- Descuentos: tocar uno lo aplica a la venta; la × lo elimina de la lista -->
+<div class="selector-estacion" id="modalDescuentos" hidden>
+  <div class="selector-caja">
+    <div class="selector-titulo">Descuentos</div>
+    <div class="selector-lista" id="descuentosLista"></div>
+    <form class="desc-form" id="descForm" autocomplete="off">
+      <div class="desc-form-titulo">Agregar descuento</div>
+      <input class="desc-input" id="descNombre" maxlength="40" placeholder="Nombre (ej. Jubilados)">
+      <div class="desc-form-fila">
+        <input class="desc-input num" id="descValor" type="number" inputmode="decimal" min="1" step="any" placeholder="Valor">
+        <div class="desc-tipo" id="descTipo" role="group" aria-label="Tipo">
+          <button type="button" data-tipo="porcentaje" class="activo">%</button>
+          <button type="button" data-tipo="monto">$</button>
+        </div>
+        <button type="submit" class="btn">Agregar</button>
+      </div>
+    </form>
+    <div class="desc-acciones">
+      <button type="button" class="btn" id="btnSinDescuento" hidden>Quitar descuento</button>
+      <button type="button" class="btn" id="descuentosCerrar">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <div class="avisos" id="avisos"></div>
 
 <script src="/js/scanner.js?v=7"></script>
 <script src="/js/camara.js?v=7"></script>
-<script src="/js/pos.js?v=7"></script>
+<script src="/js/pos.js?v=9"></script>
 </body>
 </html>

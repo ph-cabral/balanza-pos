@@ -277,12 +277,29 @@ module.exports = function crearApi({ estaciones, guardarConfig, config, sheets, 
       const venta = db.guardarVenta(req.body.items || [], {
         sheets: aSheets,
         estacion: est ? { id: est.id, nombre: est.nombre } : null,
+        descuento_id: req.body.descuento_id || null,
       });
       ok(res, { venta });
       if (aSheets) sheets.avisarVentaNueva();
     } catch (e) {
       fallo(res, 400, e.message);
     }
+  });
+
+  // --- Descuentos (lista corta que se elige desde el POS) ------------------
+  router.get('/descuentos', (_req, res) => ok(res, { descuentos: db.listarDescuentos() }));
+
+  router.post('/descuentos', (req, res) => {
+    try {
+      ok(res, { descuento: db.crearDescuento(req.body) });
+    } catch (e) {
+      fallo(res, 400, e.message);
+    }
+  });
+
+  router.delete('/descuentos/:id', (req, res) => {
+    if (!db.borrarDescuento(Number(req.params.id))) return fallo(res, 404, 'Ese descuento ya no existe');
+    ok(res, {});
   });
 
   router.get('/ventas', (req, res) => {

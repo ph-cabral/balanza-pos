@@ -187,6 +187,7 @@ input  { font-family: inherit; font-size: inherit; }
 /* ---------- Buscador y categorias ---------- */
 
 .barra-busqueda { display: flex; gap: 10px; padding: 14px 20px 10px; }
+.barra-busqueda[hidden] { display: none; }
 
 .buscador {
   flex: 1;
@@ -595,6 +596,81 @@ input  { font-family: inherit; font-size: inherit; }
 .btn-cobrar:disabled { background: var(--panel-alto); color: var(--texto-tenue); }
 .btn-cobrar svg { width: 28px; height: 28px; }
 
+/* ---------- Descuento ---------- */
+
+.descuento-fila {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.btn-descuento {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 16px;
+  max-width: 70%;
+  background: var(--panel-alto);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-chico);
+  color: var(--texto-medio);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.btn-descuento:active { background: var(--borde); }
+.btn-descuento.aplicado { border-color: var(--aviso); color: var(--aviso); }
+.desc-ico { font-weight: 800; }
+.descuento-monto { font-size: 18px; font-weight: 700; color: var(--aviso); }
+.descuento-monto[hidden] { display: none; }
+
+.desc-opcion { flex-direction: row; align-items: center; gap: 12px; }
+.desc-opcion-texto { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.desc-borrar {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radio-chico);
+  background: transparent;
+  border: 1px solid var(--borde);
+  color: var(--texto-tenue);
+  font-size: 22px;
+  line-height: 1;
+}
+.desc-borrar:active { background: var(--error); color: #fff; }
+.desc-vacio { color: var(--texto-tenue); font-size: 14px; }
+
+.desc-form { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--borde); }
+.desc-form-titulo { font-size: 13px; color: var(--texto-medio); font-weight: 600; }
+.desc-form-fila { display: flex; gap: 8px; }
+.desc-input {
+  height: 44px;
+  min-width: 0;
+  padding: 0 12px;
+  background: var(--fondo);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-chico);
+  color: var(--texto);
+  font-size: 16px;
+}
+.desc-form-fila .desc-input { flex: 1; }
+.desc-tipo { display: flex; border: 1px solid var(--borde); border-radius: var(--radio-chico); overflow: hidden; }
+.desc-tipo button {
+  width: 44px;
+  background: var(--panel-alto);
+  border: none;
+  color: var(--texto-medio);
+  font-size: 16px;
+  font-weight: 700;
+}
+.desc-tipo button.activo { background: var(--acento); color: #06140e; }
+.desc-acciones { display: flex; justify-content: flex-end; gap: 8px; }
+.desc-acciones [hidden] { display: none; }
+
 /* ---------- Botones genericos ---------- */
 
 .btn {
@@ -621,7 +697,7 @@ input  { font-family: inherit; font-size: inherit; }
   flex-direction: column;
   align-items: stretch;
   gap: 8px;
-  z-index: 50;
+  z-index: 90; /* por encima de los modales (80): confirmaciones dentro del modal */
   pointer-events: none;
   width: min(520px, calc(100vw - 40px));
 }

@@ -26,7 +26,7 @@
     grupoId: null,
     vista: 'grupos',
     ordenando: false,
-    config: { venta: { avisarSiNoTara: true, umbralTaraKg: 0.02, segundosCarrito: 5 } },
+    config: { venta: { avisarSiNoTara: true, umbralTaraKg: 0.02, segundosCarrito: 3 } },
     // Para detectar que se peso sin tarar: marcamos si la balanza volvio a cero.
     pasoPorCero: true,
     ultimoPesoCapturado: 0,
@@ -45,6 +45,10 @@
     ws: null,
     // ¿Se muestra el boton para leer codigos con la camara? (ver camara.js)
     camara: false,
+    // Descuentos disponibles y el aplicado a la venta en curso (uno por venta).
+    descuentos: [],
+    descuento: null,
+    descTipo: 'porcentaje',
   };
 
   var $ = function (id) { return document.getElementById(id); };
@@ -54,9 +58,7 @@
     chipEstado: $('chipEstado'),
     chipTexto: $('chipTexto'),
     chipPuerto: $('chipPuerto'),
-    accionesSim: $('accionesSim'),
     buscador: $('buscador'),
-    btnLimpiar: $('btnLimpiarBusqueda'),
 
     vistaGrupos: $('vistaGrupos'),
     vistaProductos: $('vistaProductos'),
@@ -100,6 +102,18 @@
     selectorEstacion: $('selectorEstacion'),
     selectorLista: $('selectorLista'),
     selectorCerrar: $('selectorCerrar'),
+
+    btnDescuento: $('btnDescuento'),
+    btnDescuentoTexto: $('btnDescuentoTexto'),
+    descuentoMonto: $('descuentoMonto'),
+    modalDescuentos: $('modalDescuentos'),
+    descuentosLista: $('descuentosLista'),
+    descForm: $('descForm'),
+    descNombre: $('descNombre'),
+    descValor: $('descValor'),
+    descTipo: $('descTipo'),
+    btnSinDescuento: $('btnSinDescuento'),
+    descuentosCerrar: $('descuentosCerrar'),
   };
 
   // ---------------------------------------------------------------- formato
@@ -174,7 +188,6 @@
       el.chipPuerto.textContent = b.error || '';
     }
 
-    el.accionesSim.hidden = !b.simulador;
 
     // Si la balanza volvio a (casi) cero, la tara esta hecha.
     var umbral = Math.round((estado.config.venta.umbralTaraKg || 0.02) * 1000);
@@ -763,14 +776,34 @@
 
   // ---------------------------------------------------------------- carrito
 
+  // Pesables: redondeo SIEMPRE para arriba a multiplo de $100 (6215 -> 6300).
+  // Misma regla que subtotalPesable() en src/db.js (el servidor es el que manda).
+  var REDONDEO_PESABLE = 10000; // centavos
+
   function subtotalDe(item) {
     return item.tipo === 'peso'
-      ? Math.round((item.cantidad * item.precio_centavos) / 1000)
+      ? Math.ceil((item.cantidad * item.precio_centavos) / (1000 * REDONDEO_PESABLE)) * REDONDEO_PESABLE
       : item.cantidad * item.precio_centavos;
   }
 
-  function totalCarrito() {
+  function totalBruto() {
     return estado.carrito.reduce(function (a, i) { return a + subtotalDe(i); }, 0);
+  }
+
+  // Igual que montoDescuento() en src/db.js: pesos enteros, tope el total.
+  function descuentoDe(d, bruto) {
+    if (!d) return 0;
+    var m = d.tipo === 'porcentaje' ? Math.round((bruto * d.valor) / 10000) * 100 : d.valor;
+    return Math.min(bruto, Math.max(0, m));
+  }
+
+  function totalCarrito() {
+    var bruto = totalBruto();
+    return bruto - descuentoDe(estado.descuento, bruto);
+  }
+
+  function textoDescuento(d) {
+    return d.tipo === 'porcentaje' ? d.valor + '%' : plata(d.valor);
   }
 
   function detalleDe(item) {
@@ -942,6 +975,8 @@
       if (el.totalMini) el.totalMini.textContent = plata(0);
       el.btnCobrar.disabled = true;
       estado.ultimoPesoCapturado = 0;
+      estado.descuento = null;
+      pintarDescuento();
       return;
     }
 
@@ -1016,9 +1051,144 @@
 
     el.carritoContador.textContent =
       carrito.length + (carrito.length === 1 ? ' artículo' : ' artículos');
+    pintarDescuento();
     el.total.textContent = plata(totalCarrito());
     if (el.totalMini) el.totalMini.textContent = el.total.textContent;
     el.btnCobrar.disabled = estado.cerrando;
+  }
+
+  // ------------------------------------------------------------- descuentos
+
+  function pintarDescuento() {
+    var d = estado.descuento;
+    el.btnDescuento.classList.toggle('aplicado', !!d);
+    el.btnDescuentoTexto.textContent = d ? d.nombre + ' · ' + textoDescuento(d) : 'Descuento';
+    el.descuentoMonto.hidden = !d;
+    if (d) el.descuentoMonto.textContent = '− ' + plata(descuentoDe(d, totalBruto()));
+  }
+
+  function aplicarDescuento(d) {
+    estado.descuento = d;
+    pintarCarrito();
+    if (estado.vista === 'confirma') pintarConfirmacion();
+  }
+
+  function cargarDescuentos() {
+    return fetch('/api/descuentos')
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) throw new Error(d.error);
+        estado.descuentos = d.descuentos || [];
+        // Si el aplicado se elimino (en otro equipo), se saca de la venta.
+        if (estado.descuento && !estado.descuentos.some(function (x) { return x.id === estado.descuento.id; })) {
+          aplicarDescuento(null);
+        }
+      });
+  }
+
+  function pintarListaDescuentos() {
+    var lista = el.descuentosLista;
+    lista.innerHTML = '';
+    if (!estado.descuentos.length) {
+      lista.innerHTML = '<div class="desc-vacio">Todavía no hay descuentos. Agregá uno abajo.</div>';
+    }
+    var bruto = totalBruto();
+    estado.descuentos.forEach(function (d) {
+      var b = document.createElement('div');
+      b.className = 'selector-opcion desc-opcion' +
+        (estado.descuento && estado.descuento.id === d.id ? ' actual' : '');
+      b.setAttribute('role', 'button');
+      b.tabIndex = 0;
+
+      var txt = document.createElement('div');
+      txt.className = 'desc-opcion-texto';
+      var nom = document.createElement('span');
+      nom.className = 'selector-nombre';
+      nom.textContent = d.nombre + ' · ' + textoDescuento(d);
+      txt.appendChild(nom);
+      if (bruto) {
+        var det = document.createElement('span');
+        det.className = 'selector-equipos num';
+        det.textContent = '− ' + plata(descuentoDe(d, bruto)) + ' sobre ' + plata(bruto);
+        txt.appendChild(det);
+      }
+      b.appendChild(txt);
+
+      var x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'desc-borrar';
+      x.title = 'Eliminar este descuento';
+      x.textContent = '×';
+      x.addEventListener('click', function (e) {
+        e.stopPropagation();
+        avisar('¿Eliminar el descuento “' + d.nombre + '”?', 'atencion', {
+          texto: 'Eliminar',
+          fn: function () { borrarDescuento(d); },
+        });
+      });
+      b.appendChild(x);
+
+      b.addEventListener('click', function () {
+        aplicarDescuento(d);
+        cerrarDescuentos();
+      });
+      lista.appendChild(b);
+    });
+    el.btnSinDescuento.hidden = !estado.descuento;
+  }
+
+  function abrirDescuentos() {
+    if (estado.reloj || estado.relojHoja) cancelarReloj();
+    pintarListaDescuentos();
+    el.modalDescuentos.hidden = false;
+    cargarDescuentos().then(pintarListaDescuentos)
+      .catch(function (e) { avisar('No se pudieron leer los descuentos: ' + e.message, 'error'); });
+  }
+
+  function cerrarDescuentos() { el.modalDescuentos.hidden = true; }
+
+  function elegirTipo(tipo) {
+    estado.descTipo = tipo === 'monto' ? 'monto' : 'porcentaje';
+    el.descTipo.querySelectorAll('button').forEach(function (b) {
+      b.classList.toggle('activo', b.dataset.tipo === estado.descTipo);
+    });
+    el.descValor.placeholder = estado.descTipo === 'monto' ? 'Monto $' : 'Porcentaje';
+  }
+
+  function crearDescuento(ev) {
+    ev.preventDefault();
+    var nombre = el.descNombre.value.trim();
+    var num = Number(String(el.descValor.value).replace(',', '.'));
+    if (!nombre) { avisar('Poné un nombre para el descuento', 'error'); el.descNombre.focus(); return; }
+    if (!(num > 0)) { avisar('Poné un valor mayor a cero', 'error'); el.descValor.focus(); return; }
+    var valor = estado.descTipo === 'monto' ? Math.round(num * 100) : Math.round(num);
+
+    fetch('/api/descuentos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre: nombre, tipo: estado.descTipo, valor: valor }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) throw new Error(d.error);
+        estado.descuentos.push(d.descuento);
+        el.descNombre.value = '';
+        el.descValor.value = '';
+        pintarListaDescuentos();
+      })
+      .catch(function (e) { avisar('No se pudo agregar: ' + e.message, 'error'); });
+  }
+
+  function borrarDescuento(d) {
+    fetch('/api/descuentos/' + d.id, { method: 'DELETE' })
+      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        if (!r.ok && !/no existe/i.test(r.error || '')) throw new Error(r.error);
+        estado.descuentos = estado.descuentos.filter(function (x) { return x.id !== d.id; });
+        if (estado.descuento && estado.descuento.id === d.id) aplicarDescuento(null);
+        if (!el.modalDescuentos.hidden) pintarListaDescuentos();
+      })
+      .catch(function (e) { avisar('No se pudo eliminar: ' + e.message, 'error'); });
   }
 
   // ------------------------------------------- carrito a pantalla completa
@@ -1091,7 +1261,7 @@
 
   function segundosDeEspera() {
     var s = Number(estado.config.venta.segundosCarrito);
-    return isFinite(s) && s > 0 ? s : 5;
+    return isFinite(s) && s > 0 ? s : 3;
   }
 
   function arrancarReloj() {
@@ -1295,14 +1465,20 @@
     fetch('/api/ventas', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: items, estacion: estado.estacion }),
+      body: JSON.stringify({
+        items: items,
+        estacion: estado.estacion,
+        descuento_id: estado.descuento ? estado.descuento.id : null,
+      }),
     })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (!d.ok) throw new Error(d.error);
-        avisar('Venta #' + d.venta.id + ' guardada · ' + plata(d.venta.total_centavos), 'ok');
+        avisar('Venta #' + d.venta.id + ' guardada · ' + plata(d.venta.total_centavos) +
+          (d.venta.descuento_centavos ? ' (desc. ' + plata(d.venta.descuento_centavos) + ')' : ''), 'ok');
         // Carrito limpio y pantalla de grupos, listo para la proxima.
         estado.carrito = [];
+        estado.descuento = null;
         estado.ultimoPesoCapturado = 0;
         estado.pasoPorCero = true;
         pintarCarrito();
@@ -1326,7 +1502,7 @@
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (!d.ok) {
-          avisar('Código ' + codigo + ' sin producto asociado', 'atencion');
+          avisar('Código ' + codigo + ' sin producto asociado', 'error');
           return;
         }
         // Escanear tambien lleva al carrito y vuelve solo a los grupos.
@@ -1347,7 +1523,7 @@
   function init() {
     // Red de seguridad por si el navegador se quedo con un index.html viejo en
     // cache: mejor un mensaje claro que un error de JavaScript a mitad de camino.
-    if (!el.grupos || !el.vistaConfirma || !el.btnSeguir || !el.selectorEstacion) {
+    if (!el.grupos || !el.vistaConfirma || !el.btnSeguir || !el.selectorEstacion || !el.modalDescuentos) {
       avisar('La pantalla quedó vieja en la memoria del navegador.', 'error', {
         texto: 'Recargar',
         // Con un recargado normal el navegador puede volver a servir lo mismo de
@@ -1360,19 +1536,18 @@
     el.buscador.addEventListener('input', function () {
       estado.filtro = el.buscador.value;
       if (estado.filtro.trim()) {
+        // Sin coincidencias: error y se limpia.
+        if (!productosVisibles().length) {
+          avisar('Sin coincidencias para “' + estado.filtro.trim() + '”', 'error');
+          volverAGrupos();
+          return;
+        }
         modoOrdenar(false);
         mostrarVista('productos');
         pintarGrilla();
       } else {
         volverAGrupos();
       }
-    });
-
-    el.btnLimpiar.addEventListener('click', function () {
-      el.buscador.value = '';
-      estado.filtro = '';
-      el.buscador.blur();
-      volverAGrupos();
     });
 
     el.btnVolver.addEventListener('click', volverAGrupos);
@@ -1398,6 +1573,19 @@
 
     el.btnCobrar.addEventListener('click', cerrarVenta);
 
+    el.btnDescuento.addEventListener('click', abrirDescuentos);
+    el.descuentosCerrar.addEventListener('click', cerrarDescuentos);
+    el.btnSinDescuento.addEventListener('click', function () { aplicarDescuento(null); cerrarDescuentos(); });
+    el.modalDescuentos.addEventListener('click', function (e) {
+      if (e.target === el.modalDescuentos) cerrarDescuentos();
+    });
+    el.descTipo.addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-tipo]');
+      if (b) elegirTipo(b.dataset.tipo);
+    });
+    el.descForm.addEventListener('submit', crearDescuento);
+    elegirTipo('porcentaje');
+
     // Accesos a Ventas y Administrar. El carrito vive solo en esta pantalla:
     // con una venta a medio cargar no se sale sin avisar.
     document.querySelectorAll('.acceso').forEach(function (a) {
@@ -1411,16 +1599,6 @@
           texto: 'Salir igual',
           fn: function () { location.href = a.href; },
         });
-      });
-    });
-
-    el.accionesSim.addEventListener('click', function (e) {
-      var b = e.target.closest('[data-sim]');
-      if (!b) return;
-      fetch('/api/balanza/simular' + qEstacion(), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gramos: Number(b.dataset.sim) }),
       });
     });
 

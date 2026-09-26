@@ -100,7 +100,9 @@ async function esperarEstable(intentos = 25) {
     });
     chequear('la venta se guarda', venta.ok, JSON.stringify(venta.venta || venta.error));
 
-    const esperadoPeso = Math.round((350 * jamon.precio_centavos) / 1000);
+    // Pesables: redondeo para arriba a multiplo de $100.
+    const pesable = (g, p) => Math.ceil((g * p) / 10000000) * 10000;
+    const esperadoPeso = pesable(350, jamon.precio_centavos);
     const esperadoUnidad = 2 * gaseosa.precio_centavos;
     const esperadoTotal = esperadoPeso + esperadoUnidad;
     chequear(
@@ -132,9 +134,37 @@ async function esperarEstable(intentos = 25) {
     });
     chequear(
       'ignora el precio mandado y usa el del catalogo',
-      manipulada.ok && manipulada.venta.total_centavos === jamon.precio_centavos,
+      manipulada.ok && manipulada.venta.total_centavos === pesable(1000, jamon.precio_centavos),
       `total ${manipulada.venta && manipulada.venta.total_centavos} (precio de lista ${jamon.precio_centavos})`
     );
+
+    console.log('\n6b. Redondeo de pesables y descuentos');
+    chequear('6215 redondea a 6300', pesable(1000, 621500) === 630000);
+    chequear('6200 exacto queda 6200', pesable(1000, 620000) === 620000);
+    const d10 = await post('/descuentos', { nombre: 'Prueba 10', tipo: 'porcentaje', valor: 10 });
+    chequear('crea descuento %', d10.ok && d10.descuento.valor === 10, JSON.stringify(d10));
+    const dMal = await post('/descuentos', { nombre: 'Malo', tipo: 'porcentaje', valor: 150 });
+    chequear('rechaza porcentaje > 100', !dMal.ok, dMal.error);
+    const lista = await get('/descuentos');
+    chequear('lista descuentos', lista.ok && lista.descuentos.some((d) => d.id === d10.descuento.id));
+    const conDesc = await post('/ventas', {
+      items: [{ producto_id: gaseosa.id, tipo: 'unidad', cantidad: 3 }],
+      descuento_id: d10.descuento.id,
+    });
+    const bruto = 3 * gaseosa.precio_centavos;
+    const esperadoDesc = Math.min(bruto, Math.round((bruto * 10) / 10000) * 100);
+    chequear('aplica el descuento en el servidor',
+      conDesc.ok && conDesc.venta.descuento_centavos === esperadoDesc && conDesc.venta.total_centavos === bruto - esperadoDesc,
+      JSON.stringify(conDesc.venta || conDesc.error));
+    const detDesc = await get('/ventas/' + conDesc.venta.id);
+    chequear('la venta guarda nombre del descuento', detDesc.ok && detDesc.venta.descuento_nombre === 'Prueba 10');
+    const borr = await fetch(BASE + '/descuentos/' + d10.descuento.id, { method: 'DELETE' }).then((r) => r.json());
+    chequear('elimina el descuento', borr.ok);
+    const sinDesc = await post('/ventas', {
+      items: [{ producto_id: gaseosa.id, tipo: 'unidad', cantidad: 1 }],
+      descuento_id: d10.descuento.id,
+    });
+    chequear('descuento eliminado: la venta se rechaza', !sinDesc.ok, sinDesc.error);
 
     console.log('\n7. Resumen del dia');
     const resumen = await get('/ventas');

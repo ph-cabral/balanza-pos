@@ -35,7 +35,7 @@
     "decimalesPeso": 3,
     "avisarSiNoTara": true,
     "umbralTaraKg": 0.02,
-    "segundosCarrito": 5
+    "segundosCarrito": 3
   },
   "sheets": {
     "habilitado": false,

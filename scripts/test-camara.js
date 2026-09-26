@@ -304,10 +304,10 @@ async function partePantalla(dir) {
 
       // Con una venta abierta no se cambia de direccion (se perderia).
       await pag.goto(inseguro, { waitUntil: 'networkidle' });
-      await pag.fill('#buscador', 'Gaseosa');
+      await pag.evaluate(() => { const b = document.querySelector('#buscador'); b.value = 'Gaseosa'; b.dispatchEvent(new Event('input')); });
       await pag.click('#grilla .prod');
       await pag.waitForFunction(() => document.querySelectorAll('#carritoLista .item').length === 1, null, { timeout: 5000 });
-      await pag.click('#btnLimpiarBusqueda');
+      await pag.evaluate(() => { const b = document.querySelector('#buscador'); b.value = ''; b.dispatchEvent(new Event('input')); });
       await esperar(300);
       await pag.evaluate(() => document.querySelector('#btnCamara').click());
       await esperar(200);
