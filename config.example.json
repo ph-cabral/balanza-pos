@@ -24,7 +24,12 @@
   ],
   "escaneres": [],
   "estaciones": [
-    { "id": "e1", "nombre": "Mostrador 1", "balanza": "b1", "escaner": null }
+    {
+      "id": "e1",
+      "nombre": "Mostrador 1",
+      "balanza": "b1",
+      "escaner": null
+    }
   ],
   "venta": {
     "decimalesPeso": 3,
@@ -36,6 +41,8 @@
     "habilitado": false,
     "url": "",
     "token": "",
-    "reintentoSegundos": 60
+    "reintentoSegundos": 60,
+    "importar": true,
+    "importarSegundos": 600
   }
 }

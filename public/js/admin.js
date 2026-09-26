@@ -1304,6 +1304,32 @@
       .then(function () { b.disabled = false; });
   });
 
+  function pintarImportar(im) {
+    var panel = $('panelImportar');
+    panel.hidden = !im.habilitado;
+    if (!im.habilitado) return;
+    $('imImportadas').textContent = im.importadas || 0;
+    var txt = im.ultima ? 'Última importada: ' + im.ultima + '.' : 'Todavía no se importó ninguna venta.';
+    if (im.ultimo_intento) txt += ' Última lectura de la planilla: ' + im.ultimo_intento + '.';
+    if (im.ultimo_resultado && im.ultimo_resultado.ok === false) txt += ' Último error: ' + im.ultimo_resultado.error;
+    $('imDetalle').textContent = txt;
+  }
+
+  function cargarImportar() {
+    api('/api/sheets/importar/estado').then(function (d) { pintarImportar(d.importar); })
+      .catch(function () { $('panelImportar').hidden = true; });
+  }
+
+  $('btnImportarAhora').addEventListener('click', function () {
+    var b = this;
+    b.disabled = true;
+    api('/api/sheets/importar/ahora', { method: 'POST' }).then(function (d) {
+      pintarImportar(d.importar);
+      avisar('Importación de la planilla al día', 'ok');
+    }).catch(function (e) { avisar(e.message, 'error'); })
+      .then(function () { b.disabled = false; });
+  });
+
   // --- Totales por dia y por mes
   var mesElegido = null; // 'AAAA-MM'; null = el mes en curso
   var fmtMes = new Intl.DateTimeFormat('es-AR', { month: 'long', year: 'numeric' });
@@ -1524,6 +1550,7 @@
 
   function cargarVentas() {
     cargarSheets();
+    cargarImportar();
     cargarTotales();
     api('/api/ventas?limite=60').then(function (d) {
       $('vCantidad').textContent = d.resumen.ventas;

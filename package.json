@@ -18,7 +18,9 @@
     "test-estaciones": "node scripts/test-estaciones.js",
     "test-deploy": "node scripts/test-deploy.js",
     "test-gastos": "node scripts/test-gastos.js",
-    "test": "node scripts/test-humo.js && node scripts/test-grupos.js && node scripts/test-estaciones.js && node scripts/test-deploy.js && node scripts/test-gastos.js"
+    "limpiar-ventas": "node scripts/limpiar-ventas.js",
+    "test-importar-sheets": "node scripts/test-importar-sheets.js",
+    "test": "node scripts/test-humo.js && node scripts/test-grupos.js && node scripts/test-estaciones.js && node scripts/test-deploy.js && node scripts/test-gastos.js && node scripts/test-importar-sheets.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",

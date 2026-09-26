@@ -67,6 +67,10 @@ function doPost(e) {
     if (data && data.accion === 'gastos') {
       return responderJson_(leerGastosPos_(data, leerConfigPos_()));
     }
+    // Consulta de ventas (solo lectura) para importar a la base del POS.
+    if (data && data.accion === 'ventas') {
+      return responderJson_(leerVentasPos_(data, leerConfigPos_()));
+    }
     const r = procesarYAvisar_(data);
     return responderJson_(r);
   } catch (err) {
@@ -350,6 +354,49 @@ function leerGastosPos_(data, cfg) {
   return { ok: true, servicio: 'pos-planilla', mes: mes, gastos: gastos, proveedores: proveedores };
 }
 
+// ========================================
+// VENTAS DE LA PLANILLA (solo lectura, para importar a SQLite)
+// ----------------------------------------
+// El POS trae todas las filas "cliente" (ventas que carga el bot de Telegram
+// para quienes todavia no usan el POS con balanza) para copiarlas a su base.
+// No filtra por mes: sirve tanto para la carga inicial completa como para el
+// escaneo periodico (el POS descarta lo que ya tiene, por fecha+hora+monto).
+// Pedido:    { accion: "ventas", token: "..." }
+// Respuesta: { ok, ventas: [{ fecha, hora, monto }, ...] }
+// ========================================
+function leerVentasPos_(data, cfg) {
+  if (!cfg.posToken || !data || data.token !== cfg.posToken) {
+    return { ok: false, error: 'token invalido' };
+  }
+
+  const spreadsheet = SpreadsheetApp.openById(POS_CONFIG.SHEET_ID);
+  const patron = /^\d{4}(-\d{2})?$/; // hojas anuales 'yyyy' y mensuales 'yyyy-MM'
+  const ventas = [];
+
+  spreadsheet.getSheets().forEach(function (sheet) {
+    const nombre = sheet.getName();
+    if (!patron.test(nombre)) return;
+    const datos = sheet.getDataRange().getValues();
+    for (let i = 1; i < datos.length; i++) {
+      const fila = datos[i];
+      if (!fila[0]) continue;
+      const tipo = String(fila[2] || '').trim();
+      if (tipo !== 'cliente') continue;
+      const monto = parseFloat(fila[3]) || 0;
+      if (!monto) continue;
+      ventas.push({
+        fecha: normalizarFechaPos_(fila[0]),
+        hora: normalizarHoraPos_(fila[1]),
+        monto: monto,
+      });
+    }
+  });
+
+  ventas.sort(function (a, b) { return (a.fecha + a.hora) < (b.fecha + b.hora) ? -1 : 1; });
+
+  return { ok: true, servicio: 'pos-planilla', ventas: ventas };
+}
+
 // Igual que normalizarHora() del bot: Sheets convierte "21:12" en una hora real.
 function normalizarHoraPos_(valorCelda) {
   if (valorCelda instanceof Date) {
@@ -509,5 +556,17 @@ function probarGastosPos() {
   Logger.log(mes + ': ' + r.gastos.length + ' gastos, ' + r.proveedores.length + ' proveedores en la lista');
   r.gastos.slice(-10).forEach(function (g) {
     Logger.log(g.fecha + ' ' + g.hora + '  ' + g.detalle + '  ' + g.monto + (g.pagado ? '' : '  (a pagar)'));
+  });
+}
+
+// Muestra en el registro cuantas ventas "cliente" hay en toda la planilla,
+// como las trae el importador del POS.
+function probarVentasPos() {
+  const cfg = leerConfigPos_();
+  const r = leerVentasPos_({ token: cfg.posToken }, cfg);
+  if (!r.ok) { Logger.log(JSON.stringify(r)); return; }
+  Logger.log(r.ventas.length + ' ventas "cliente" en toda la planilla');
+  r.ventas.slice(-10).forEach(function (v) {
+    Logger.log(v.fecha + ' ' + v.hora + '  $' + v.monto);
   });
 }

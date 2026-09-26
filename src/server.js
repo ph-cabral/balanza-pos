@@ -17,6 +17,7 @@ const Estaciones = require('./estaciones');
 const crearApi = require('./routes/api');
 const crearSheets = require('./sheets');
 const crearGastos = require('./gastos');
+const crearSheetsImportar = require('./sheets-importar');
 
 const RAIZ = path.join(__dirname, '..');
 // POS_CONFIG permite correr las pruebas con otra configuracion sin tocar la real.
@@ -100,6 +101,9 @@ app.use(express.json({ limit: '2mb' }));
 const sheets = crearSheets(config);
 // Gastos por proveedor: se leen de la misma planilla (los carga el bot de Telegram).
 const gastos = crearGastos(config);
+// Ventas de quienes todavia no usan el POS: se importan de la misma planilla
+// (sentido inverso a "sheets", que copia las ventas del POS hacia la planilla).
+const sheetsImportar = crearSheetsImportar(config);
 
 // Ultima vez que alguien modifico algo por la API (venta, alta de producto...).
 // El actualizador automatico no reinicia el POS si hubo movimiento reciente.
@@ -109,7 +113,7 @@ app.use('/api', (req, _res, next) => {
   next();
 });
 
-app.use('/api', crearApi({ estaciones, guardarConfig, config, sheets, gastos }));
+app.use('/api', crearApi({ estaciones, guardarConfig, config, sheets, gastos, sheetsImportar }));
 
 app.get('/api/version', (_req, res) => {
   res.json({ ok: true, version: VERSION, iniciado: INICIADO, deploy: leerEstadoDeploy() });
@@ -305,6 +309,7 @@ function ipsLocales() {
 
 estaciones.iniciar();
 sheets.iniciar();
+sheetsImportar.iniciar();
 
 const puerto = config.http.port || 3000;
 server.listen(puerto, config.http.host || '0.0.0.0', () => {
@@ -322,6 +327,7 @@ server.listen(puerto, config.http.host || '0.0.0.0', () => {
   }
   console.log(`  Admin:    http://localhost:${puerto}/admin.html`);
   console.log(`  Sheets:   ${sheets.habilitado() ? 'copiando ventas a Google Sheets' : 'apagado'}`);
+  console.log(`  Importar: ${sheetsImportar.habilitado() ? 'trayendo ventas de la planilla' : 'apagado'}`);
   console.log(`  Versión:  ${VERSION.corto}${VERSION.fecha ? ' (' + VERSION.fecha + ')' : ''}`);
   console.log('  ---------------------------------------------');
   console.log('');
@@ -330,6 +336,7 @@ server.listen(puerto, config.http.host || '0.0.0.0', () => {
 function cerrar() {
   clearInterval(pingTimer);
   sheets.detener();
+  sheetsImportar.detener();
   estaciones.detener();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 2000).unref();

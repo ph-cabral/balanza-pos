@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0f1419">
 <title>Administración · Balanza POS</title>
 <link rel="stylesheet" href="/css/app.css?v=5">
-<link rel="stylesheet" href="/css/admin.css?v=7">
+<link rel="stylesheet" href="/css/admin.css?v=8">
 </head>
 <body>
 
@@ -416,6 +416,17 @@ Gaseosa 500ml;Coca Cola;Bebidas;unidad;1500;7790895000997"></textarea>
       <button class="btn-primario" id="btnSheetsReintentar">Reintentar ahora</button>
     </div>
 
+    <div class="panel" id="panelImportar" hidden>
+      <h2>Importación desde la planilla</h2>
+      <p class="ayuda">Quienes todavía no usan el POS anotan la venta en la planilla (bot de
+        Telegram). El POS la trae sola cada tanto y queda también en esta base, sin duplicar.</p>
+      <div class="stats">
+        <div class="stat"><div class="stat-label">Importadas</div><div class="stat-valor num" id="imImportadas">0</div></div>
+      </div>
+      <p class="ayuda" id="imDetalle" style="margin-top:12px"></p>
+      <button class="btn-primario" id="btnImportarAhora">Importar ahora</button>
+    </div>
+
     <div class="panel">
       <h2>Últimas ventas</h2>
       <p class="ayuda">Tocá una venta para ver el detalle de los artículos.</p>
@@ -438,6 +449,6 @@ Gaseosa 500ml;Coca Cola;Bebidas;unidad;1500;7790895000997"></textarea>
 
 <div class="avisos" id="avisos"></div>
 
-<script src="/js/admin.js?v=7"></script>
+<script src="/js/admin.js?v=8"></script>
 </body>
 </html>

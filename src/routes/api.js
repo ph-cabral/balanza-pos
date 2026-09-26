@@ -10,7 +10,7 @@ const db = require('../db');
 const puertos = require('../puertos');
 const { mesValido } = require('../gastos');
 
-module.exports = function crearApi({ estaciones, guardarConfig, config, sheets, gastos }) {
+module.exports = function crearApi({ estaciones, guardarConfig, config, sheets, gastos, sheetsImportar }) {
   const router = express.Router();
 
   const ok = (res, data) => res.json({ ok: true, ...data });
@@ -324,6 +324,19 @@ module.exports = function crearApi({ estaciones, guardarConfig, config, sheets, 
     if (!sheets) return fallo(res, 409, 'Sincronizacion con Sheets no disponible');
     await sheets.procesar();
     ok(res, { sheets: sheets.estado() });
+  });
+
+  // --- Ventas de la planilla (quienes todavia no usan el POS) ---------------
+
+  router.get('/sheets/importar/estado', (_req, res) => {
+    ok(res, { importar: sheetsImportar ? sheetsImportar.estado() : { habilitado: false } });
+  });
+
+  // Fuerza una lectura ya, sin esperar al proximo ciclo.
+  router.post('/sheets/importar/ahora', async (_req, res) => {
+    if (!sheetsImportar) return fallo(res, 409, 'Importacion desde Sheets no disponible');
+    await sheetsImportar.procesar();
+    ok(res, { importar: sheetsImportar.estado() });
   });
 
   router.get('/ventas/:id', (req, res) => {

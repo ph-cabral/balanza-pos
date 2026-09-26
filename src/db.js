@@ -308,6 +308,28 @@ db.transaction(() => {
   if (!cols.includes('estacion')) db.exec(`ALTER TABLE ventas ADD COLUMN estacion TEXT NOT NULL DEFAULT ''`);
 }
 
+// --- Migracion: origen de la venta (POS o importada de la planilla) --------
+// Las ventas que carga el bot de Telegram (quienes todavia no usan el POS)
+// se traen de la planilla con origen 'sheet' y un solo item generico con el
+// total (la planilla no tiene detalle por articulo). Las del POS quedan 'pos'.
+{
+  const cols = db.prepare(`PRAGMA table_info(ventas)`).all().map((c) => c.name);
+  if (!cols.includes('origen')) db.exec(`ALTER TABLE ventas ADD COLUMN origen TEXT NOT NULL DEFAULT 'pos'`);
+}
+
+// --- Tabla: ventas importadas de la planilla (deduplicacion) ----------------
+// Una fila "cliente" de la planilla no tiene id propio; la clave es
+// fecha|hora|monto_centavos|n-esima ocurrencia igual en esa lectura, para que
+// dos ventas iguales en el mismo minuto no se confundan entre si. Se guarda
+// para que el escaneo periodico no vuelva a traer lo ya importado.
+db.exec(`
+CREATE TABLE IF NOT EXISTS sheets_importadas (
+  clave     TEXT PRIMARY KEY,
+  venta_id  INTEGER NOT NULL REFERENCES ventas(id) ON DELETE CASCADE,
+  creado_en TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+`);
+
 // --- Sentencias preparadas --------------------------------------------------
 const S = {
   listarProductos: db.prepare(`
@@ -441,12 +463,12 @@ const S = {
   `),
 
   ventasRecientes: db.prepare(`
-    SELECT id, fecha, total_centavos, items_count, arca_estado, estacion_id, estacion
+    SELECT id, fecha, total_centavos, items_count, arca_estado, estacion_id, estacion, origen
     FROM ventas ORDER BY id DESC LIMIT ?
   `),
 
   ventaPorId: db.prepare(`
-    SELECT id, fecha, total_centavos, items_count, estado, arca_estado, arca_cae, estacion_id, estacion
+    SELECT id, fecha, total_centavos, items_count, estado, arca_estado, arca_cae, estacion_id, estacion, origen
     FROM ventas WHERE id = ?
   `),
 
@@ -518,6 +540,17 @@ const S = {
     SELECT venta_id, ultimo_error FROM sheets_cola
     WHERE estado = 'pendiente' AND ultimo_error IS NOT NULL
     ORDER BY venta_id DESC LIMIT 1
+  `),
+
+  insertarVentaImportada: db.prepare(`
+    INSERT INTO ventas (fecha, total_centavos, items_count, estacion_id, estacion, origen)
+    VALUES (@fecha, @total_centavos, 1, NULL, '', 'sheet')
+  `),
+  sheetsImportadaClaves: db.prepare(`SELECT clave FROM sheets_importadas`),
+  sheetsImportadaInsertar: db.prepare(`INSERT INTO sheets_importadas (clave, venta_id) VALUES (?, ?)`),
+  sheetsImportadasResumen: db.prepare(`
+    SELECT COUNT(*) AS importadas, MAX(creado_en) AS ultima
+    FROM sheets_importadas
   `),
 
   getConfig: db.prepare(`SELECT valor FROM config_kv WHERE clave = ?`),
@@ -848,6 +881,28 @@ const api = {
     for (const id of ids) S.sheetsError.run(String(error).slice(0, 500), id);
   }),
   sheetsResumen: () => ({ ...S.sheetsResumen.get(), ultimo_error: S.sheetsUltimoError.get() || null }),
+
+  // --- Ventas importadas de la planilla (quienes todavia no usan el POS) ---
+  sheetsImportadaClaves: () => new Set(S.sheetsImportadaClaves.all().map((f) => f.clave)),
+  importarVentaDeSheet: db.transaction(({ fecha, total_centavos, clave }) => {
+    const info = S.insertarVentaImportada.run({ fecha, total_centavos });
+    const ventaId = info.lastInsertRowid;
+    S.insertarItem.run({
+      venta_id: ventaId,
+      producto_id: null,
+      nombre: 'Venta cargada desde planilla (sin detalle de items)',
+      marca: '',
+      categoria: '',
+      codigo_barras: null,
+      tipo: 'unidad',
+      cantidad: 1,
+      precio_centavos: total_centavos,
+      subtotal_centavos: total_centavos,
+    });
+    S.sheetsImportadaInsertar.run(clave, ventaId);
+    return ventaId;
+  }),
+  sheetsImportadasResumen: () => S.sheetsImportadasResumen.get(),
 
   getConfig: (clave) => {
     const row = S.getConfig.get(clave);
