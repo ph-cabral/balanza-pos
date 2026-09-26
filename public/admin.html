@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0f1419">
 <title>Administración · Balanza POS</title>
-<link rel="stylesheet" href="/css/app.css?v=5">
-<link rel="stylesheet" href="/css/admin.css?v=8">
+<link rel="stylesheet" href="/css/app.css?v=6">
+<link rel="stylesheet" href="/css/admin.css?v=10">
 </head>
 <body>
 
@@ -379,8 +379,8 @@ Gaseosa 500ml;Coca Cola;Bebidas;unidad;1500;7790895000997"></textarea>
       <div class="gastos-cab">
         <div>
           <h2>Gastos por proveedor · <span id="gMesNombre">—</span></h2>
-          <p class="ayuda">Lo cargado como proveedor o gasto por Telegram en la planilla de Google.
-            Mismo mes que «Totales». Tocá un proveedor para ver cada pago.</p>
+          <p class="ayuda">Lo cargado como proveedor o gasto por Telegram, desde la copia de la planilla
+            en esta base. Mismo mes que «Totales». Tocá un proveedor para ver cada pago.</p>
         </div>
         <div class="gastos-acciones">
           <span class="gastos-hora" id="gActualizado"></span>
@@ -417,14 +417,17 @@ Gaseosa 500ml;Coca Cola;Bebidas;unidad;1500;7790895000997"></textarea>
     </div>
 
     <div class="panel" id="panelImportar" hidden>
-      <h2>Importación desde la planilla</h2>
-      <p class="ayuda">Quienes todavía no usan el POS anotan la venta en la planilla (bot de
-        Telegram). El POS la trae sola cada tanto y queda también en esta base, sin duplicar.</p>
+      <h2>Copia de la planilla en esta base</h2>
+      <p class="ayuda">La planilla de Google se copia entera a la base del POS cada 10 minutos, en una
+        sola tabla: las ventas que se siguen anotando por Telegram y todos los gastos. Lo que el bot
+        reclasifica o elimina también se corrige acá. Las ventas del propio POS no se duplican.</p>
       <div class="stats">
-        <div class="stat"><div class="stat-label">Importadas</div><div class="stat-valor num" id="imImportadas">0</div></div>
+        <div class="stat"><div class="stat-label">Filas copiadas</div><div class="stat-valor num" id="imMovimientos">0</div></div>
+        <div class="stat"><div class="stat-label">Ventas del bot</div><div class="stat-valor num" id="imImportadas">0</div></div>
+        <div class="stat"><div class="stat-label">Gastos</div><div class="stat-valor num" id="imGastos">0</div></div>
       </div>
       <p class="ayuda" id="imDetalle" style="margin-top:12px"></p>
-      <button class="btn-primario" id="btnImportarAhora">Importar ahora</button>
+      <button class="btn-primario" id="btnImportarAhora">Actualizar ahora</button>
     </div>
 
     <div class="panel">
@@ -449,6 +452,6 @@ Gaseosa 500ml;Coca Cola;Bebidas;unidad;1500;7790895000997"></textarea>
 
 <div class="avisos" id="avisos"></div>
 
-<script src="/js/admin.js?v=8"></script>
+<script src="/js/admin.js?v=10"></script>
 </body>
 </html>

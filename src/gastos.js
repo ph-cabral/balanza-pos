@@ -1,27 +1,17 @@
 'use strict';
 
 /**
- * Gastos por proveedor, leidos de la planilla de Google.
+ * Gastos por proveedor (Administracion -> Ventas).
  *
  * Los gastos se siguen cargando por el bot de Telegram (monto -> Proveedor /
- * Gasto), asi que la fuente es la planilla, no SQLite. El POS los pide al
- * mismo webapp de Apps Script al que copia las ventas ("POS -> Planilla",
- * funcion leerGastosPos_), con la misma URL y el mismo token:
+ * Gasto) en la planilla de Google. El POS tiene una copia completa de esa
+ * planilla en SQLite (tabla `planilla`, ver sheets-importar.js, se actualiza
+ * cada sheets.importarSegundos) y los gastos se leen de ahi: gasto = toda fila
+ * cuyo tipo no es "cliente". "Actualizar" en administracion fuerza una lectura
+ * de la planilla antes de responder.
  *
- *   POST { accion: 'gastos', token, mes: 'AAAA-MM' }
- *   ->   { ok, mes, gastos: [{ fecha, hora, detalle, monto, pagado }], proveedores: [...] }
- *
- * Aca se agrupan por proveedor y se pasan a centavos. Se guarda en memoria
- * unos minutos por mes para no ir a Google cada vez que se abre la pestaña;
- * "Actualizar" en administracion fuerza la lectura.
- *
- * No depende de sheets.habilitado (eso es la copia de ventas): alcanza con
- * sheets.url y sheets.token. Se apaga con sheets.gastos = false o con
- * POS_SIN_SHEETS=1 (pruebas).
+ * Se agrupan por proveedor y se pasan a centavos.
  */
-
-const TIMEOUT_MS = 30000;
-const CACHE_MS = 3 * 60 * 1000;
 
 function mesValido(m) {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(String(m || ''));
@@ -83,73 +73,34 @@ function agrupar(gastos, proveedores) {
   };
 }
 
-module.exports = function crearGastos(config) {
-  const cfg = () => config.sheets || {};
-  const habilitado = () => process.env.POS_SIN_SHEETS !== '1' &&
-    cfg().gastos !== false && !!(cfg().url && cfg().token);
+module.exports = function crearGastos(config, planilla) {
+  const db = require('./db');
+  const sincroniza = () => !!(planilla && planilla.habilitado());
 
-  const cache = new Map(); // mes -> { en, datos }
-  const enCurso = new Map(); // mes -> promesa (dos pedidos juntos van a Google una sola vez)
-
-  async function pedir(mes) {
-    const r = await fetch(cfg().url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accion: 'gastos', token: cfg().token, mes }),
-      redirect: 'follow', // Apps Script responde con un 302 a googleusercontent
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    const texto = await r.text();
-    let d;
-    try { d = JSON.parse(texto); } catch (_) {
-      if (r.status === 404) throw new Error('La URL del webapp de Apps Script no existe (HTTP 404)');
-      if (/accounts\.google\.com|ServiceLogin/.test(r.url + texto.slice(0, 2000))) {
-        throw new Error('El webapp pide iniciar sesión: "Quién tiene acceso" tiene que ser "Cualquier usuario"');
-      }
-      throw new Error(`Respuesta no JSON de la planilla (HTTP ${r.status})`);
-    }
-    if (!d.ok) throw new Error(d.error === 'token invalido' ? 'La planilla rechazó el token (sheets.token ≠ POS_TOKEN)' : (d.error || 'La planilla rechazó el pedido'));
-    // Una versión vieja de "POS -> Planilla" no conoce la accion y responde como si fuera un envío de ventas vacío.
-    if (!Array.isArray(d.gastos)) {
-      const e = new Error('Falta publicar la versión nueva del proyecto "POS → Planilla" en Apps Script ' +
-        '(Implementar → Administrar implementaciones → editar → Nueva versión)');
-      e.codigo = 'version-vieja';
-      throw e;
-    }
-    return d;
-  }
+  // Se consideran "habilitados" si la copia de la planilla esta activa o si
+  // ya hay una copia guardada (se muestra aunque ahora este apagada).
+  const habilitado = () => sincroniza() || db.planillaResumen().movimientos > 0;
 
   async function delMes(mes, { refrescar = false } = {}) {
-    if (!habilitado()) {
-      return { habilitado: false, mes, motivo: 'Falta sheets.url o sheets.token en config.json' };
-    }
-    const c = cache.get(mes);
-    if (!refrescar && c && Date.now() - c.en < CACHE_MS) return c.datos;
-    if (enCurso.has(mes)) return enCurso.get(mes);
+    if (refrescar && sincroniza()) await planilla.procesar();
 
-    const p = (async () => {
-      try {
-        const d = await pedir(mes);
-        const datos = {
-          habilitado: true,
-          mes,
-          actualizado: new Date().toISOString(),
-          ...agrupar(d.gastos, d.proveedores),
-        };
-        cache.set(mes, { en: Date.now(), datos });
-        return datos;
-      } catch (e) {
-        const msg = e.name === 'TimeoutError' ? 'Sin respuesta de Google (timeout)'
-          : (e.cause && e.cause.code ? `Sin conexión con Google (${e.cause.code})` : e.message);
-        // Si ya habia datos de ese mes, se muestran con el aviso del error.
-        if (c) return { ...c.datos, error: msg, desactualizado: true };
-        return { habilitado: true, mes, error: msg, codigo: e.codigo || null };
-      } finally {
-        enCurso.delete(mes);
-      }
-    })();
-    enCurso.set(mes, p);
-    return p;
+    const r = db.planillaResumen();
+    if (!r.movimientos && !r.leida) {
+      if (!sincroniza()) return { habilitado: false, mes, motivo: 'Falta sheets.url o sheets.token en config.json' };
+      const est = planilla.estado();
+      const err = est.ultimo_resultado && est.ultimo_resultado.ok === false ? est.ultimo_resultado : null;
+      if (err) return { habilitado: true, mes, error: err.error, codigo: err.codigo || null };
+      return { habilitado: true, mes, error: 'Todavía no se leyó la planilla; probá Actualizar en unos segundos', codigo: 'sin-lectura' };
+    }
+
+    const filas = db.planillaGastosDelMes(mes).map((g) => ({ ...g, monto: g.monto_centavos / 100 }));
+    const datos = { habilitado: true, mes, actualizado: r.leida, ...agrupar(filas, db.planillaProveedores()) };
+
+    // Si la ultima lectura fallo, se muestra lo guardado con el aviso del error.
+    const est = sincroniza() ? planilla.estado() : null;
+    const res = est && est.ultimo_resultado;
+    if (res && res.ok === false) return { ...datos, error: res.error, codigo: res.codigo || null, desactualizado: true };
+    return datos;
   }
 
   return { habilitado, delMes, mesValido };

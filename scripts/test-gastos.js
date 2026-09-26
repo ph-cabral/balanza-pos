@@ -6,9 +6,11 @@
  *   - apps-script-pos/Codigo.gs (leerGastosPos_) corrido con una planilla
  *     simulada: hoja del mes, hoja anual, hoja mensual sin archivar, celdas
  *     con fecha/hora como Date, filas de otro mes o de clientes
- *   - GET /api/gastos contra un webapp simulado (con el 302 de Apps Script):
- *     mes por defecto, memoria, ?refrescar=1, token invalido, version vieja
- *     del webapp, Google caido con y sin lectura anterior, sin configurar
+ *   - GET /api/gastos: sale de la copia local de la planilla (tabla planilla
+ *     en SQLite, que llena sheets-importar.js desde un webapp simulado con el
+ *     302 de Apps Script): mes por defecto, no va a Google en cada pedido,
+ *     ?refrescar=1 relee, version vieja del webapp, Google caido (muestra la
+ *     copia con aviso), token invalido, sin configurar
  *
  * No toca Google ni la base real: config y base temporales, puerto 3059.
  *
@@ -180,13 +182,13 @@ function crearWebapp(gs) {
       pedir({ origen: 'pos', token: 'x', ventas: [] }).error === 'token invalido');
   }
 
-  console.log('\n3. GET /api/gastos (webapp simulado)');
+  console.log('\n3. GET /api/gastos (copia local de la planilla, webapp simulado)');
   const w = await crearWebapp(gs);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pos-gastos-'));
   const cfg = JSON.parse(fs.readFileSync(path.join(RAIZ, 'config.example.json'), 'utf8'));
   cfg.http.port = PUERTO;
   for (const b of cfg.balanzas) b.simulador = true;
-  cfg.sheets = { habilitado: false, url: `http://localhost:${w.puerto}/exec`, token: TOKEN };
+  cfg.sheets = { habilitado: false, importarSegundos: 999999, url: `http://localhost:${w.puerto}/exec`, token: TOKEN };
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(cfg));
 
   const env = { ...process.env, POS_CONFIG: path.join(dir, 'config.json'), POS_DATA: dir, POS_CONFIG_COMUN: path.join(dir, 'no-existe.json') };
@@ -197,58 +199,69 @@ function crearWebapp(gs) {
       try { await fetch(URL + '/api/red'); return; } catch (_) { await esperar(200); }
     }
   };
+  let dir2 = null;
   const terminar = (codigo) => {
     try { servidor.kill(); } catch (_) {}
     try { w.server.close(); } catch (_) {}
-    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+    for (const x of [dir, dir2]) { try { if (x) fs.rmSync(x, { recursive: true, force: true }); } catch (_) {} }
     process.exit(codigo);
   };
   const get = (ruta) => fetch(URL + ruta).then((r) => r.json());
+  // Espera a que termine la lectura de la planilla que dispara el arranque.
+  const primeraLectura = async () => {
+    for (let i = 0; i < 50; i++) {
+      const e = (await get('/api/sheets/importar/estado')).importar;
+      if (e.ultimo_intento && !e.en_curso) return e;
+      await esperar(100);
+    }
+    return null;
+  };
 
   try {
     await levantar();
+    const est = await primeraLectura();
+    chequear('al arrancar copia la planilla (acción planilla con el token)', w.ultimo && w.ultimo.accion === 'planilla' && w.ultimo.token === TOKEN && est.movimientos > 0,
+      JSON.stringify(est && { movimientos: est.movimientos, gastos: est.gastos }));
+    let n0 = w.pedidos;
     let d = await get('/api/gastos?mes=2026-09');
     let g = d.gastos;
     chequear('habilitado sin la copia de ventas (alcanza url + token)', d.ok && g.habilitado === true, JSON.stringify(g).slice(0, 120));
-    chequear('pide la acción gastos con el token', w.ultimo && w.ultimo.accion === 'gastos' && w.ultimo.token === TOKEN && w.ultimo.mes === '2026-09');
+    chequear('sale de la base: no va a Google', w.pedidos === n0, `${n0} -> ${w.pedidos}`);
     chequear('total pagado $17.250,50', g.total_pagado_centavos === 1725050, g.total_pagado_centavos);
     chequear('a pagar $20.000', g.total_a_pagar_centavos === 2000000, g.total_a_pagar_centavos);
     chequear('4 filas: DP, Coca, juanperez, desperdicio',
       g.proveedores.map((p) => p.nombre).join(',') === 'DP(Paladini),Coca,juanperez,desperdicio', g.proveedores.map((p) => p.nombre).join(','));
     chequear('nombre como está en la lista ("coca" → "Coca")', g.proveedores[1].nombre === 'Coca' && g.proveedores[1].cantidad === 2);
-    chequear('trae la hora de lectura', !!g.actualizado);
+    chequear('la fila de agosto pegada en la hoja de septiembre cuenta en agosto (por fecha, no por hoja)',
+      (await get('/api/gastos?mes=2026-08')).gastos.total_pagado_centavos === 499900);
+    chequear('celda Date → 03/09 10:15', g.proveedores[1].movimientos.some((m) => m.fecha === '2026-09-03' && m.hora === '10:15'));
+    chequear('trae la hora de la copia', !!g.actualizado);
+    chequear('mes de la hoja mensual sin archivar ("TRUE" como texto)', (await get('/api/gastos?mes=2026-07')).gastos.total_pagado_centavos === 80000);
 
-    const antes = w.pedidos;
-    d = await get('/api/gastos?mes=2026-09');
-    chequear('segunda vez sale de memoria (no va a Google)', w.pedidos === antes && d.gastos.total_pagado_centavos === 1725050, `${antes} -> ${w.pedidos}`);
+    n0 = w.pedidos;
     d = await get('/api/gastos?mes=2026-09&refrescar=1');
-    chequear('?refrescar=1 vuelve a leer', w.pedidos === antes + 1);
-    w.demora = 400; // Google tarda: el segundo pedido llega mientras el primero sigue en curso
-    const [x1, x2] = await Promise.all([get('/api/gastos?mes=2026-07&refrescar=1'), get('/api/gastos?mes=2026-07&refrescar=1')]);
-    chequear('dos pedidos juntos → una sola lectura', w.pedidos === antes + 2 && x1.gastos.total_pagado_centavos === 80000 && x2.gastos.total_pagado_centavos === 80000,
-      `${w.pedidos - antes} lecturas, ${x1.gastos.total_pagado_centavos}/${x2.gastos.total_pagado_centavos}`);
-    w.demora = 0;
+    chequear('?refrescar=1 relee la planilla', w.pedidos === n0 + 1 && d.gastos.total_pagado_centavos === 1725050, `${w.pedidos - n0}`);
 
     d = await get('/api/gastos');
     const mesActual = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit' }).format(new Date()).slice(0, 7);
     chequear('sin ?mes → mes en curso', d.gastos.mes === mesActual, d.gastos.mes);
     d = await get('/api/gastos?mes=2026-13');
     chequear('mes inválido → mes en curso', d.gastos.mes === mesActual);
+    d = await get('/api/gastos?mes=2026-05');
+    chequear('mes sin gastos → cero, sin error', d.gastos.cantidad === 0 && !d.gastos.error);
 
     w.modo = 'vieja';
-    d = await get('/api/gastos?mes=2026-06');
-    chequear('webapp sin publicar → avisa que falta la versión nueva',
-      d.ok && d.gastos.codigo === 'version-vieja' && /versión nueva/.test(d.gastos.error), d.gastos.error);
+    d = await get('/api/gastos?mes=2026-09&refrescar=1');
+    chequear('webapp sin publicar → muestra la copia y avisa que falta la versión nueva',
+      d.ok && d.gastos.codigo === 'version-vieja' && /versión nueva/.test(d.gastos.error) && d.gastos.total_pagado_centavos === 1725050, d.gastos.error);
     w.modo = 'normal';
 
     await new Promise((r) => w.server.close(r));
     d = await get('/api/gastos?mes=2026-09&refrescar=1');
-    chequear('Google caído con lectura anterior → la muestra con aviso',
+    chequear('Google caído → muestra la copia guardada con aviso',
       d.gastos.desactualizado === true && d.gastos.total_pagado_centavos === 1725050 && !!d.gastos.error, d.gastos.error);
-    d = await get('/api/gastos?mes=2026-05');
-    chequear('Google caído sin lectura anterior → error, sin romper', d.ok && !!d.gastos.error && !d.gastos.proveedores, d.gastos.error);
 
-    // Token equivocado
+    // Token equivocado (con copia guardada de antes)
     servidor.kill();
     await esperar(400);
     await new Promise((r) => w.server.listen(w.puerto, r));
@@ -256,19 +269,22 @@ function crearWebapp(gs) {
     fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(cfg));
     servidor = spawn(process.execPath, [path.join(RAIZ, 'src', 'server.js')], { stdio: ['ignore', 'ignore', 'inherit'], env });
     await levantar();
+    await primeraLectura();
     d = await get('/api/gastos?mes=2026-09');
-    chequear('token distinto de POS_TOKEN → lo dice', /token/.test(d.gastos.error || ''), d.gastos.error);
+    chequear('token distinto de POS_TOKEN → lo dice (y muestra la copia)', /token/.test(d.gastos.error || '') && d.gastos.total_pagado_centavos === 1725050, d.gastos.error);
 
-    // Sin token: apagado
+    // Sin token y sin copia guardada: apagado
     servidor.kill();
     await esperar(400);
+    dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'pos-gastos-vacia-'));
     cfg.sheets.token = '';
-    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify(cfg));
-    servidor = spawn(process.execPath, [path.join(RAIZ, 'src', 'server.js')], { stdio: ['ignore', 'ignore', 'inherit'], env });
+    fs.writeFileSync(path.join(dir2, 'config.json'), JSON.stringify(cfg));
+    servidor = spawn(process.execPath, [path.join(RAIZ, 'src', 'server.js')], { stdio: ['ignore', 'ignore', 'inherit'],
+      env: { ...env, POS_CONFIG: path.join(dir2, 'config.json'), POS_DATA: dir2 } });
     await levantar();
     const n = w.pedidos;
     d = await get('/api/gastos?mes=2026-09');
-    chequear('sin token → habilitado false, no va a Google', d.ok && d.gastos.habilitado === false && w.pedidos === n);
+    chequear('sin token ni copia → habilitado false, no va a Google', d.ok && d.gastos.habilitado === false && w.pedidos === n);
   } catch (e) {
     console.error(e);
     fallos++;

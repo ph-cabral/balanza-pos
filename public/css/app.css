@@ -70,10 +70,13 @@ input  { font-family: inherit; font-size: inherit; }
 
 /* ---------- Panel de peso ---------- */
 
+/* Si no entra todo en una linea, lo ultimo baja de renglon: los chips de
+   estado nunca se achican por debajo de su texto ni quedan pisados. */
 .peso-panel {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 20px;
+  gap: 12px 20px;
   padding: 16px 20px;
   background: var(--panel);
   border-bottom: 1px solid var(--borde);
@@ -99,7 +102,7 @@ input  { font-family: inherit; font-size: inherit; }
 
 .peso-unidad { font-size: 24px; color: var(--texto-medio); font-weight: 500; }
 
-.peso-meta { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
+.peso-meta { display: flex; flex-direction: column; gap: 6px; flex: 1 0 auto; }
 
 .chip {
   display: inline-flex;
@@ -654,16 +657,34 @@ input  { font-family: inherit; font-size: inherit; }
 
 @keyframes subir { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 
-/* ---------- Encabezado derecho ---------- */
+/* ---------- Accesos: Ventas y Administrar ---------- */
 
-.link-admin {
-  font-size: 13px;
-  color: var(--texto-tenue);
-  text-decoration: none;
-  padding: 6px 10px;
+/* En el panel de peso, a la derecha. Son links comunes: el que atiende va a
+   Administracion (o directo a su pestana Ventas) y vuelve con "Volver". */
+.accesos { display: flex; gap: 8px; margin-left: auto; flex: 0 0 auto; }
+
+/* Icono con el rotulo abajo: ocupan poco ancho y quedan a la altura del peso. */
+.acceso {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 76px;
+  height: 64px;
+  padding: 0 10px;
+  background: var(--panel-alto);
+  border: 1px solid var(--borde);
   border-radius: var(--radio-chico);
+  color: var(--texto-medio);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
 }
-.link-admin:active { background: var(--panel-alto); }
+.acceso svg { width: 24px; height: 24px; flex: 0 0 auto; }
+.acceso:active { background: var(--borde); color: var(--texto); }
+.acceso:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
 
 /* ---------- Pantallas angostas / vertical ---------- */
 
@@ -736,11 +757,8 @@ input  { font-family: inherit; font-size: inherit; }
     white-space: nowrap;
   }
   .carrito-titulo, .carrito-contador { white-space: nowrap; }
-  /* Cerrada muestra el total; abierta, el acceso a Administrar (el total ya
-     esta abajo en grande). Ocupan el mismo lugar para que la cabecera no
-     cambie de alto. */
+  /* Cerrada muestra el total; abierta no (el total ya esta abajo en grande). */
   .derecha.abierta .total-mini { display: none; }
-  .derecha:not(.abierta) .link-admin { display: none; }
 
   /* Cuenta regresiva de la subida automatica, pegada al borde de arriba. */
   .hoja-tiempo {
@@ -796,6 +814,29 @@ input  { font-family: inherit; font-size: inherit; }
   .confirma-pie { flex-direction: column; align-items: stretch; gap: 10px; }
   .btn-seguir { width: 100%; }
   .confirma-subtotal { font-size: 22px; }
+}
+
+/* Celular: el peso y los dos accesos en la primera linea; los chips de estado
+   y los botones del simulador bajan a la segunda. Los accesos pasan a icono
+   con el rotulo chico abajo, para que entren al lado del numero. */
+@media (max-width: 600px) {
+  .peso-valor   { order: 0; }
+  .accesos      { order: 1; gap: 6px; }
+  .peso-meta    { order: 2; flex-basis: 100%; flex-direction: row; flex-wrap: wrap; align-items: center; }
+  .peso-acciones { order: 3; }
+  .peso-meta .chip { align-self: center; }
+
+  .peso-numero { font-size: 44px; letter-spacing: -1.5px; }
+  .peso-unidad { font-size: 20px; }
+
+  .acceso {
+    gap: 3px;
+    min-width: 56px;
+    height: 56px;
+    padding: 0 7px;
+    font-size: 11px;
+  }
+  .acceso svg { width: 22px; height: 22px; }
 }
 
 @keyframes destacar {

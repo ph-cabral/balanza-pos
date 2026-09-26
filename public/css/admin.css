@@ -16,6 +16,12 @@ html, body { overflow: auto; user-select: text; -webkit-user-select: text; }
   margin-bottom: 20px;
 }
 .admin-titulo { font-size: 22px; font-weight: 700; margin: 0; }
+.admin-cab .btn { display: inline-flex; align-items: center; white-space: nowrap; text-decoration: none; }
+/* Celular: el boton de volver baja de renglon en vez de aplastarse. */
+@media (max-width: 520px) {
+  .admin-cab { flex-wrap: wrap; gap: 10px 12px; }
+  .admin-cab .btn { width: 100%; justify-content: center; }
+}
 .admin-version { margin-left: auto; font-size: 12px; opacity: .6; white-space: nowrap; }
 .admin-version.alerta { opacity: 1; color: #f0a020; }
 .aviso-version {

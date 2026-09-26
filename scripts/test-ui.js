@@ -330,6 +330,76 @@ function chequear(desc, cond, detalle) {
       chequear('a los pocos segundos baja sola', Math.abs((await arribaHoja()) - cerradaY) < 2);
     }
 
+    console.log('\n13. Accesos a Ventas y Administrar');
+    for (const [w, h] of [[360, 740], [820, 1180], [1280, 800]]) {
+      await pagina.setViewportSize({ width: w, height: h });
+      await pagina.goto(URL, { waitUntil: 'networkidle' });
+      await esperar(600);
+      const bv = await pagina.locator('#accesoVentas').boundingBox();
+      const ba = await pagina.locator('#accesoAdmin').boundingBox();
+      const ancho = await pagina.evaluate(() => document.documentElement.scrollWidth);
+      chequear(`a ${w} px se ven los dos botones, sin desbordar`,
+        !!bv && !!ba && bv.x >= 0 && ba.x + ba.width <= w + 0.5 && ancho <= w,
+        bv && ba ? `ventas x=${Math.round(bv.x)} admin hasta ${Math.round(ba.x + ba.width)} de ${w}` : 'no están');
+      chequear(`a ${w} px tienen buen tamaño para el dedo`, !!bv && bv.height >= 44 && bv.width >= 44);
+      if (w === 360) {
+        const bp = await pagina.locator('#pesoNumero').boundingBox();
+        chequear('en celular van en la misma línea que el peso',
+          bp && Math.abs((bv.y + bv.height / 2) - (bp.y + bp.height / 2)) < 20);
+        await pagina.screenshot({ path: path.join(SALIDA, '11-celular-accesos.png') });
+      }
+    }
+
+    await pagina.setViewportSize({ width: 360, height: 740 });
+    await pagina.goto(URL, { waitUntil: 'networkidle' });
+    await esperar(600);
+    await pagina.locator('#accesoVentas').click();
+    await pagina.waitForURL(/admin\.html#ventas$/, { timeout: 5000 });
+    await esperar(800);
+    chequear('Ventas abre Administración en la pestaña Ventas',
+      (await pagina.locator('.tab.activa').textContent()).trim() === 'Ventas' &&
+      await pagina.locator('[data-panel="ventas"]').isVisible());
+    chequear('y muestra el resumen de hoy', await pagina.locator('#vCantidad').isVisible());
+    const anchoAdmin = await pagina.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth));
+    chequear('Administración en celular no desborda de costado', anchoAdmin <= 360, anchoAdmin + ' px');
+    await pagina.screenshot({ path: path.join(SALIDA, '12-celular-ventas.png'), fullPage: true });
+    await pagina.locator('.tab', { hasText: 'Productos' }).click();
+    await esperar(300);
+    chequear('cambiar de pestaña actualiza la dirección', pagina.url().endsWith('#productos'));
+    await pagina.reload({ waitUntil: 'networkidle' });
+    await esperar(600);
+    chequear('recargar mantiene la pestaña',
+      (await pagina.locator('.tab.activa').textContent()).trim() === 'Productos');
+
+    await pagina.goto(URL, { waitUntil: 'networkidle' });
+    await esperar(600);
+    await pagina.locator('#accesoAdmin').click();
+    await pagina.waitForURL(/admin\.html/, { timeout: 5000 });
+    await esperar(600);
+    chequear('Administrar abre Administración en Grupos',
+      (await pagina.locator('.tab.activa').textContent()).trim() === 'Grupos');
+
+    // Con una venta a medio cargar no se sale sin avisar.
+    await pagina.goto(URL, { waitUntil: 'networkidle' });
+    await esperar(600);
+    await pagina.evaluate(() => {
+      for (const ch of '7790895000997') document.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true }));
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    await esperar(700);
+    await pagina.mouse.click(180, 30);           // bajar la hoja
+    await esperar(500);
+    await pagina.locator('#accesoVentas').click();
+    await esperar(500);
+    chequear('con venta abierta no se va de la pantalla', !/admin/.test(pagina.url()));
+    chequear('y avisa que hay una venta abierta',
+      (await pagina.locator('.aviso.atencion').count()) === 1 &&
+      /venta abierta/.test(await pagina.locator('.aviso.atencion').textContent()));
+    await pagina.screenshot({ path: path.join(SALIDA, '13-celular-venta-abierta.png') });
+    await pagina.locator('.aviso.atencion .aviso-accion').click();
+    await pagina.waitForURL(/admin\.html#ventas$/, { timeout: 5000 });
+    chequear('«Salir igual» lleva a Ventas', true);
+
     chequear('no hubo errores de JavaScript', errores.length === 0, errores.join(' | ') || 'ninguno');
 
   } catch (e) {

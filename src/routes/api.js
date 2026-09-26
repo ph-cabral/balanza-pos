@@ -300,11 +300,11 @@ module.exports = function crearApi({ estaciones, guardarConfig, config, sheets, 
     ok(res, db.totalesVentas(String(req.query.mes || ''), Number(req.query.meses) || 24));
   });
 
-  // --- Gastos por proveedor (de la planilla de Google) ----------------------
+  // --- Gastos por proveedor (copia local de la planilla de Google) ----------
 
-  // ?mes=AAAA-MM (por defecto el actual); ?refrescar=1 saltea la memoria.
-  // Nunca falla con 5xx: si Google no responde, devuelve { error } para que
-  // administracion lo muestre en el panel sin romper el resto de Ventas.
+  // ?mes=AAAA-MM (por defecto el actual); ?refrescar=1 relee la planilla antes.
+  // Nunca falla con 5xx: si Google no responde, devuelve lo guardado con
+  // { error } para que administracion lo muestre sin romper el resto de Ventas.
   router.get('/gastos', async (req, res) => {
     const mesActual = db.hoyLocal().slice(0, 7);
     const mes = mesValido(req.query.mes) ? String(req.query.mes) : mesActual;
@@ -326,7 +326,7 @@ module.exports = function crearApi({ estaciones, guardarConfig, config, sheets, 
     ok(res, { sheets: sheets.estado() });
   });
 
-  // --- Ventas de la planilla (quienes todavia no usan el POS) ---------------
+  // --- Copia de la planilla en la base (ventas del bot y gastos) ------------
 
   router.get('/sheets/importar/estado', (_req, res) => {
     ok(res, { importar: sheetsImportar ? sheetsImportar.estado() : { habilitado: false } });

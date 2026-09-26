@@ -1350,6 +1350,22 @@
 
     el.btnCobrar.addEventListener('click', cerrarVenta);
 
+    // Accesos a Ventas y Administrar. El carrito vive solo en esta pantalla:
+    // con una venta a medio cargar no se sale sin avisar.
+    document.querySelectorAll('.acceso').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        var n = estado.carrito.length;
+        if (!n && !estado.cerrando) return;
+        e.preventDefault();
+        if (estado.cerrando) return;
+        avisar('Hay una venta abierta (' + n + (n === 1 ? ' artículo' : ' artículos') +
+          '). Cerrala antes de salir; si salís ahora se pierde.', 'atencion', {
+          texto: 'Salir igual',
+          fn: function () { location.href = a.href; },
+        });
+      });
+    });
+
     el.accionesSim.addEventListener('click', function (e) {
       var b = e.target.closest('[data-sim]');
       if (!b) return;

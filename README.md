@@ -136,15 +136,12 @@ queda a pagar, y una fila por proveedor con sus movimientos, lo pagado, lo pendi
 y el porcentaje sobre el total; tocando un proveedor se ve cada pago con fecha y hora.
 Primero van los proveedores de la pestaña `proveedores` de la planilla; después
 "Otros gastos" (lo que el bot guarda con el nombre del usuario —gasto personal,
-mercadería— y desperdicio). **La fuente es la planilla de Google**, porque los gastos
-se siguen cargando por Telegram: el POS los pide al proyecto de Apps Script
-"POS → Planilla" (acción `gastos`, misma URL y mismo token que la copia de ventas) y
-los guarda 3 minutos en memoria; *Actualizar* fuerza la lectura. Alcanza con
-`sheets.url` y `sheets.token` (no depende de `sheets.habilitado`); se apaga con
-`sheets.gastos: false`. Si Google no responde se muestra la última lectura con un
-aviso. API: `GET /api/gastos?mes=AAAA-MM[&refrescar=1]`. Requiere publicar la versión
-nueva de `apps-script-pos/Codigo.gs` (Implementar → Administrar implementaciones →
-editar → Nueva versión; la URL no cambia).
+mercadería— y desperdicio). Los gastos se siguen cargando por Telegram en la planilla
+de Google; **se leen de la copia de la planilla que el POS guarda en su base** (ver
+"Copia de la planilla en la base del POS" más abajo), así que abrir la pestaña no va
+a Google. *Actualizar* fuerza una lectura de la planilla antes de mostrar. Si la
+última lectura falló se muestra lo guardado con un aviso. API:
+`GET /api/gastos?mes=AAAA-MM[&refrescar=1]`.
 
 **Balanzas:** con dos balanzas iguales hay dos adaptadores FTDI y Windows les puede
 cambiar el número de COM. Atar cada una a su cable con el **número de serie del
@@ -200,6 +197,15 @@ esperando lo siguiente.
 (la balanza nunca volvió a cero) y ofrece descontar el peso anterior con un botón.
 No bloquea nada, solo avisa.
 
+**Ventas y Administrar:** arriba a la derecha, al lado del peso, hay dos botones
+(en PC, tablet y celular). *Ventas* abre Administración directo en la pestaña
+Ventas (resumen de hoy, totales por día y por mes, gastos); *Administrar* abre
+Administración en Grupos. Se vuelve con *← Volver al punto de venta*. Si hay una
+venta a medio cargar, avisa antes de salir (el carrito se perdería) y ofrece
+*Salir igual*. Cada pestaña de administración tiene su dirección
+(`/admin.html#ventas`, `#productos`, `#estaciones`…), así que se puede guardar
+como acceso directo y al recargar no se pierde la pestaña.
+
 ---
 
 ## Verificar que todo funciona
@@ -212,6 +218,8 @@ node scripts/test-estaciones.js  dos balanzas y dos escáneres simulados en dos 
                                  (usa config y base temporales, puerto 3057)
 node scripts/test-deploy.js  lo que usa el actualizador automático (puerto 3058)
 node scripts/test-gastos.js  gastos por proveedor: Codigo.gs con planilla simulada y /api/gastos (puerto 3059)
+node scripts/test-importar-sheets.js  copia de la planilla a la base: ventas del bot, gastos,
+                                 reclasificadas/eliminadas, sin reimportar las del POS (puerto 3060)
 npm test                     todas menos la de pantalla
 ```
 
@@ -311,6 +319,36 @@ JSON y lo avisa como error.
 
 Para cortar la copia cuando termine la transición: `"habilitado": false` y reiniciar
 el POS. Los scripts de prueba (`test-humo`, `test-ui`) nunca copian a la planilla.
+
+## Copia de la planilla en la base del POS (sentido inverso)
+
+La base del POS tiene la misma información que la planilla. Cada 10 minutos (y al
+arrancar) el POS pide la planilla **entera** al proyecto de Apps Script "POS →
+Planilla" (acción `planilla`: todas las filas de todas las hojas `yyyy` y `yyyy-MM`,
+de cualquier tipo, más la pestaña `proveedores`) y la guarda en **una sola tabla**
+`planilla`: la división mes en curso / hoja anual es de la planilla, en SQLite no
+hace falta. La tabla se reemplaza entera en cada lectura.
+
+- **Ventas del bot:** cada fila `cliente` que no escribió este POS queda también
+  como venta (origen planilla, un ítem genérico con el total), así los totales
+  por día y por mes incluyen a quienes todavía anotan por Telegram.
+- **Las ventas del propio POS no vuelven:** se descuentan las que ya se copiaron a
+  la planilla con la misma fecha, hora y monto.
+- **Lo que el bot corrige se corrige acá:** si una fila `cliente` se reclasifica
+  como proveedor/gasto o se elimina, la venta correspondiente se quita en la
+  siguiente lectura.
+- **Gastos:** salen de esta tabla (toda fila que no es `cliente`).
+- Si la planilla no responde, o no tiene ninguna hoja de meses, la copia local no se
+  toca y el error se ve en Administración → Ventas → "Copia de la planilla en esta
+  base" (botón *Actualizar ahora*).
+
+Alcanza con `sheets.url` y `sheets.token`. Se apaga con `sheets.importar: false`;
+el intervalo es `sheets.importarSegundos` (600). Requiere publicar la versión
+nueva de `apps-script-pos/Codigo.gs`.
+
+**Solo una PC debe copiar ventas a la planilla real** (`sheets.habilitado: true`):
+las ventas que copie otra PC (por ejemplo, pruebas en la de desarrollo) aparecen
+en la planilla y la PC del POS las toma como ventas del bot.
 
 ---
 

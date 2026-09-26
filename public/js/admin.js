@@ -45,22 +45,44 @@
 
   // ------------------------------------------------------------- pestanas
 
-  document.querySelectorAll('.tab').forEach(function (t) {
-    t.addEventListener('click', function () {
-      document.querySelectorAll('.tab').forEach(function (x) { x.classList.remove('activa'); });
-      t.classList.add('activa');
-      var destino = t.dataset.tab;
-      document.querySelectorAll('[data-panel]').forEach(function (p) {
-        p.hidden = p.dataset.panel !== destino;
-      });
-      if (destino === 'grupos') cargarGrupos();
-      if (destino === 'marcas') cargarMarcas();
-      if (destino === 'ventas') cargarVentas();
-      if (destino === 'balanza') {
-        // No pisar un borrador con cambios sin guardar al volver a la pestaña.
-        (sucio() ? Promise.resolve() : cargarEquipos()).then(buscarPuertos);
-      }
+  // La pestaña va en la dirección (#ventas, #productos, #estaciones…): el POS
+  // entra directo a Ventas con /admin.html#ventas y recargar no la pierde.
+  var TAB_A_HASH = { balanza: 'estaciones' };
+  var HASH_A_TAB = { estaciones: 'balanza', balanza: 'balanza' };
+
+  function tabDeHash() {
+    var h = decodeURIComponent(location.hash.replace(/^#/, '')).toLowerCase();
+    var tab = HASH_A_TAB[h] || h;
+    return document.querySelector('.tab[data-tab="' + tab + '"]') ? tab : null;
+  }
+
+  function activarTab(destino) {
+    document.querySelectorAll('.tab').forEach(function (x) {
+      x.classList.toggle('activa', x.dataset.tab === destino);
     });
+    document.querySelectorAll('[data-panel]').forEach(function (p) {
+      p.hidden = p.dataset.panel !== destino;
+    });
+    var hash = '#' + (TAB_A_HASH[destino] || destino);
+    if (location.hash !== hash) {
+      try { history.replaceState(null, '', hash); } catch (e) {}
+    }
+    if (destino === 'grupos') cargarGrupos();
+    if (destino === 'marcas') cargarMarcas();
+    if (destino === 'ventas') cargarVentas();
+    if (destino === 'balanza') {
+      // No pisar un borrador con cambios sin guardar al volver a la pestaña.
+      (sucio() ? Promise.resolve() : cargarEquipos()).then(buscarPuertos);
+    }
+  }
+
+  document.querySelectorAll('.tab').forEach(function (t) {
+    t.addEventListener('click', function () { activarTab(t.dataset.tab); });
+  });
+
+  window.addEventListener('hashchange', function () {
+    var tab = tabDeHash();
+    if (tab) activarTab(tab);
   });
 
   // ------------------------------------------------------------- grupos
@@ -1306,14 +1328,26 @@
 
   function pintarImportar(im) {
     var panel = $('panelImportar');
-    panel.hidden = !im.habilitado;
-    if (!im.habilitado) return;
-    $('imImportadas').textContent = im.importadas || 0;
-    var txt = im.ultima ? 'Última importada: ' + im.ultima + '.' : 'Todavía no se importó ninguna venta.';
-    if (im.ultimo_intento) txt += ' Última lectura de la planilla: ' + im.ultimo_intento + '.';
-    if (im.ultimo_resultado && im.ultimo_resultado.ok === false) txt += ' Último error: ' + im.ultimo_resultado.error;
-    $('imDetalle').textContent = txt;
+    panel.hidden = !im.habilitado && !im.movimientos;
+    if (panel.hidden) return;
+    $('imMovimientos').textContent = (im.movimientos || 0).toLocaleString('es-AR');
+    $('imImportadas').textContent = (im.importadas || 0).toLocaleString('es-AR');
+    $('imGastos').textContent = (im.gastos || 0).toLocaleString('es-AR');
+    var partes = [];
+    if (im.desde && im.hasta) partes.push('Desde ' + fechaCorta(im.desde) + ' hasta ' + fechaCorta(im.hasta) + '.');
+    partes.push(im.leida ? 'Última copia: ' + new Date(im.leida).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) + '.' : 'Todavía no se copió la planilla.');
+    if (im.en_curso) partes.push('Leyendo la planilla…');
+    var r = im.ultimo_resultado;
+    if (r && r.ok && (r.ventas_nuevas || r.ventas_borradas)) {
+      partes.push('En la última lectura: ' + r.ventas_nuevas + ' venta(s) nueva(s)' +
+        (r.ventas_borradas ? ', ' + r.ventas_borradas + ' quitada(s) porque ya no están en la planilla' : '') + '.');
+    }
+    if (r && r.ok === false) partes.push('Último error: ' + r.error);
+    if (!im.habilitado) partes.push('La copia automática está apagada en esta PC.');
+    $('imDetalle').textContent = partes.join(' ');
   }
+
+  function fechaCorta(f) { return f.slice(8, 10) + '/' + f.slice(5, 7) + '/' + f.slice(0, 4); }
 
   function cargarImportar() {
     api('/api/sheets/importar/estado').then(function (d) { pintarImportar(d.importar); })
@@ -1325,7 +1359,8 @@
     b.disabled = true;
     api('/api/sheets/importar/ahora', { method: 'POST' }).then(function (d) {
       pintarImportar(d.importar);
-      avisar('Importación de la planilla al día', 'ok');
+      avisar(d.importar.ultimo_resultado && d.importar.ultimo_resultado.ok === false ? 'No se pudo leer la planilla: ' + d.importar.ultimo_resultado.error : 'Copia de la planilla al día', d.importar.ultimo_resultado && d.importar.ultimo_resultado.ok === false ? 'error' : 'ok');
+      cargarVentas();
     }).catch(function (e) { avisar(e.message, 'error'); })
       .then(function () { b.disabled = false; });
   });
@@ -1430,7 +1465,7 @@
     tb.innerHTML = '';
 
     if (!g.habilitado) {
-      avisoGastos('Los gastos se leen de la planilla de Google y la conexión no está configurada en esta PC (' +
+      avisoGastos('Los gastos salen de la copia de la planilla de Google y la conexión no está configurada en esta PC (' +
         (g.motivo || 'falta sheets.url o sheets.token') + ').', '');
       $('gCuerpo').hidden = true;
       $('gActualizado').textContent = '';
@@ -1662,6 +1697,9 @@
   cargarEquipos();
   cargarRed();
   cargarVersion();
+  // Entrar directo a una pestaña (/admin.html#ventas desde el POS).
+  var tabInicial = tabDeHash();
+  if (tabInicial && tabInicial !== 'grupos') activarTab(tabInicial);
   setInterval(cargarVersion, 60000);
   conectarWS();
   setInterval(refrescarTramas, 2000);

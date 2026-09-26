@@ -1,43 +1,47 @@
 'use strict';
 
 /**
- * Importa a SQLite las ventas cargadas por el bot de Telegram en la planilla
- * (quienes todavia no usan el POS con balanza siguen anotando ahi). Es el
- * sentido inverso de sheets.js (que copia las ventas del POS a la planilla).
+ * Copia la planilla de Google entera a SQLite, para que la base del POS tenga
+ * la misma informacion que la planilla. Es el sentido inverso de sheets.js
+ * (que copia las ventas del POS a la planilla).
  *
- * Pide al mismo webapp de Apps Script ("POS -> Planilla") todas las filas
- * "cliente" de todas las hojas (accion 'ventas'; ver leerVentasPos_ en
- * apps-script-pos/Codigo.gs) y las guarda como ventas con origen = 'sheet',
- * con un solo item generico con el total (la planilla no tiene detalle por
- * articulo). No hay id de fila en la planilla: la clave de deduplicacion es
- * fecha|hora|monto_centavos|n-esima ocurrencia igual (asi dos ventas iguales
- * en el mismo minuto no se confunden entre si). Correr esto muchas veces no
- * duplica nada: antes de guardar se descarta lo que ya esta en
- * sheets_importadas. La primera corrida (cuando esa tabla esta vacia) trae
- * sola toda la historia que haya en la planilla.
+ * Pide al webapp de Apps Script ("POS -> Planilla") TODAS las filas de TODAS
+ * las hojas de movimientos, de cualquier tipo, y la lista de proveedores
+ * (accion 'planilla'; ver leerPlanillaPos_ en apps-script-pos/Codigo.gs). Con
+ * eso, en una sola transaccion (db.sincronizarPlanilla):
+ *
+ *  - reemplaza la tabla `planilla` (una sola tabla: la division mes en curso
+ *    / hoja anual es de la planilla, aca no hace falta) y
+ *    `planilla_proveedores`. De ahi salen los gastos por proveedor.
+ *  - concilia las ventas: cada fila "cliente" que no escribio este POS (las
+ *    que carga el bot de Telegram) queda como venta con origen 'sheet' y un
+ *    item generico con el total. Las que ya no estan en la planilla (el bot
+ *    las reclasifico como proveedor/gasto o las elimino) se borran. Las que
+ *    escribio este POS no se vuelven a traer: se descuentan contando las
+ *    ventas propias ya copiadas con la misma fecha, hora y monto.
+ *
+ * La planilla no tiene id de fila: la clave de una venta importada es
+ * fecha|hora|monto_centavos|n-esima ocurrencia igual (sin contar las del POS).
  *
  * No depende de sheets.habilitado (esa es la copia de ventas del POS hacia la
  * planilla): alcanza con sheets.url y sheets.token. Se apaga con
  * config.json -> sheets.importar = false o con POS_SIN_SHEETS=1 (pruebas).
+ * Intervalo: sheets.importarSegundos (600 por defecto, minimo 30).
  */
 
 const db = require('./db');
 
-const TIMEOUT_MS = 30000;
+const TIMEOUT_MS = 90000; // la planilla entera: miles de filas
 
-// Arma la clave de deduplicacion: como la planilla no tiene un id por fila,
-// dos ventas con la misma fecha, hora y monto se distinguen por el orden en
-// que aparecen en la lectura (estable: la planilla siempre llega ordenada
-// por fecha y hora, y el orden entre iguales no cambia de una lectura a otra).
-function conClaves(ventas) {
-  const vistos = new Map();
-  return ventas.map((v) => {
-    const centavos = Math.round(Number(v.monto) * 100);
-    const base = `${v.fecha}|${v.hora}|${centavos}`;
-    const n = (vistos.get(base) || 0) + 1;
-    vistos.set(base, n);
-    return { fecha: v.fecha, hora: v.hora, total_centavos: centavos, clave: `${base}|${n}` };
-  });
+/** Normaliza lo que manda Apps Script: montos a centavos, hora HH:MM o ''. */
+function normalizar(movimientos) {
+  return (movimientos || []).map((m) => ({
+    fecha: String(m.fecha || '').slice(0, 10),
+    hora: /^\d{2}:\d{2}/.test(String(m.hora || '')) ? String(m.hora).slice(0, 5) : '',
+    tipo: String(m.tipo || '').trim(),
+    monto_centavos: Math.round((Number(m.monto) || 0) * 100),
+    pagado: m.pagado === true || String(m.pagado).toUpperCase() === 'TRUE',
+  })).filter((m) => /^\d{4}-\d{2}-\d{2}$/.test(m.fecha));
 }
 
 module.exports = function crearSheetsImportar(config) {
@@ -45,7 +49,7 @@ module.exports = function crearSheetsImportar(config) {
   const habilitado = () => process.env.POS_SIN_SHEETS !== '1' &&
     cfg().importar !== false && !!(cfg().url && cfg().token);
 
-  let enCurso = false;
+  let enCurso = null;
   let pedidoMientras = false;
   let ultimoIntento = null;
   let ultimoResultado = null;
@@ -55,7 +59,7 @@ module.exports = function crearSheetsImportar(config) {
     const r = await fetch(cfg().url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accion: 'ventas', token: cfg().token }),
+      body: JSON.stringify({ accion: 'planilla', token: cfg().token }),
       redirect: 'follow', // Apps Script responde con un 302 a googleusercontent
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
@@ -69,45 +73,48 @@ module.exports = function crearSheetsImportar(config) {
       throw new Error(`Respuesta no JSON de la planilla (HTTP ${r.status})`);
     }
     if (!d.ok) throw new Error(d.error === 'token invalido' ? 'La planilla rechazó el token (sheets.token ≠ POS_TOKEN)' : (d.error || 'La planilla rechazó el pedido'));
-    // Una version vieja de "POS -> Planilla" no conoce la accion 'ventas'.
-    if (!Array.isArray(d.ventas)) {
+    // Una version vieja de "POS -> Planilla" no conoce la accion 'planilla'.
+    if (!Array.isArray(d.movimientos)) {
       const e = new Error('Falta publicar la versión nueva del proyecto "POS → Planilla" en Apps Script ' +
         '(Implementar → Administrar implementaciones → editar → Nueva versión)');
       e.codigo = 'version-vieja';
       throw e;
     }
-    return d.ventas;
+    // Resguardo: si no encontro ninguna hoja de meses (renombradas, planilla
+    // equivocada) no se vacia la copia local.
+    if (!d.hojas) throw new Error('La planilla no tiene hojas de meses (yyyy o yyyy-MM); no se tocó la copia local');
+    return d;
   }
 
-  async function procesar() {
-    if (!habilitado()) return;
-    if (enCurso) { pedidoMientras = true; return; }
-    enCurso = true;
+  async function correr() {
     ultimoIntento = new Date().toISOString();
     try {
-      const crudas = await pedir();
-      const conClave = conClaves(crudas).filter((v) => v.total_centavos > 0);
-      const yaImportadas = db.sheetsImportadaClaves();
-      const nuevas = conClave.filter((v) => !yaImportadas.has(v.clave));
-      let importadas = 0;
-      for (const v of nuevas) {
-        db.importarVentaDeSheet({
-          fecha: `${v.fecha} ${v.hora}:00`,
-          total_centavos: v.total_centavos,
-          clave: v.clave,
-        });
-        importadas++;
+      const d = await pedir();
+      const movimientos = normalizar(d.movimientos);
+      const r = db.sincronizarPlanilla({ movimientos, proveedores: d.proveedores || [], leidoEn: ultimoIntento });
+      ultimoResultado = { ok: true, movimientos: movimientos.length, ventas_nuevas: r.nuevas, ventas_borradas: r.borradas };
+      if (r.nuevas || r.borradas) {
+        console.log(`  [sheets] planilla copiada: ${movimientos.length} filas; ventas del bot +${r.nuevas} / -${r.borradas}`);
       }
-      ultimoResultado = { ok: true, leidas: conClave.length, importadas };
-      if (importadas) console.log(`  [sheets] ${importadas} venta(s) importada(s) de la planilla`);
     } catch (e) {
-      const msg = e.name === 'TimeoutError' ? 'Sin respuesta de Google (timeout)' : e.message;
+      const msg = e.name === 'TimeoutError' ? 'Sin respuesta de Google (timeout)'
+        : (e.cause && e.cause.code ? `Sin conexión con Google (${e.cause.code})` : e.message);
       ultimoResultado = { ok: false, error: msg, codigo: e.codigo || null };
-      console.warn(`  [sheets] no se pudo importar de la planilla: ${msg}`);
-    } finally {
-      enCurso = false;
-      if (pedidoMientras) { pedidoMientras = false; setImmediate(() => procesar().catch(() => {})); }
+      console.warn(`  [sheets] no se pudo copiar la planilla: ${msg}`);
     }
+  }
+
+  // Si ya hay una lectura en curso, espera esa y hace una mas al terminar
+  // (para que "Actualizar ahora" siempre traiga algo posterior al clic).
+  async function procesar() {
+    if (!habilitado()) return;
+    if (enCurso) { pedidoMientras = true; return enCurso; }
+    enCurso = (async () => {
+      try {
+        do { pedidoMientras = false; await correr(); } while (pedidoMientras);
+      } finally { enCurso = null; }
+    })();
+    return enCurso;
   }
 
   function iniciar() {
@@ -124,9 +131,19 @@ module.exports = function crearSheetsImportar(config) {
   }
 
   function estado() {
+    const p = db.planillaResumen();
+    const im = db.sheetsImportadasResumen();
     return {
       habilitado: habilitado(),
-      ...db.sheetsImportadasResumen(),
+      en_curso: !!enCurso,
+      movimientos: p.movimientos,
+      gastos: p.gastos,
+      proveedores: p.proveedores,
+      desde: p.desde,
+      hasta: p.hasta,
+      leida: p.leida,
+      importadas: im.importadas, // ventas del bot en la base (origen 'sheet')
+      ultima: im.ultima,
       ultimo_intento: ultimoIntento,
       ultimo_resultado: ultimoResultado,
     };
@@ -135,4 +152,4 @@ module.exports = function crearSheetsImportar(config) {
   return { habilitado, procesar, iniciar, detener, estado };
 };
 
-module.exports.conClaves = conClaves;
+module.exports.normalizar = normalizar;

@@ -99,11 +99,11 @@ app.use(express.json({ limit: '2mb' }));
 
 // --- Copia a Google Sheets (transicion) ------------------------------------
 const sheets = crearSheets(config);
-// Gastos por proveedor: se leen de la misma planilla (los carga el bot de Telegram).
-const gastos = crearGastos(config);
-// Ventas de quienes todavia no usan el POS: se importan de la misma planilla
-// (sentido inverso a "sheets", que copia las ventas del POS hacia la planilla).
+// Copia completa de la planilla en SQLite (sentido inverso a "sheets"): trae
+// las ventas de quienes todavia usan el bot de Telegram y todos los gastos.
 const sheetsImportar = crearSheetsImportar(config);
+// Gastos por proveedor: se leen de esa copia local de la planilla.
+const gastos = crearGastos(config, sheetsImportar);
 
 // Ultima vez que alguien modifico algo por la API (venta, alta de producto...).
 // El actualizador automatico no reinicia el POS si hubo movimiento reciente.
@@ -327,7 +327,7 @@ server.listen(puerto, config.http.host || '0.0.0.0', () => {
   }
   console.log(`  Admin:    http://localhost:${puerto}/admin.html`);
   console.log(`  Sheets:   ${sheets.habilitado() ? 'copiando ventas a Google Sheets' : 'apagado'}`);
-  console.log(`  Importar: ${sheetsImportar.habilitado() ? 'trayendo ventas de la planilla' : 'apagado'}`);
+  console.log(`  Importar: ${sheetsImportar.habilitado() ? 'copiando la planilla (ventas del bot y gastos) a la base' : 'apagado'}`);
   console.log(`  Versión:  ${VERSION.corto}${VERSION.fecha ? ' (' + VERSION.fecha + ')' : ''}`);
   console.log('  ---------------------------------------------');
   console.log('');

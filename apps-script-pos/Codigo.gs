@@ -24,8 +24,11 @@
 //   { ok: true, aceptadas: [123, ...], rechazadas: [{id, error}],
 //     telegram: "ok" | "sin configurar" | "sin ventas nuevas" | "error: ..." }
 //
-// También responde, solo lectura, los gastos de un mes para el POS:
-//   { accion: "gastos", token: "...", mes: "2026-09" }  (ver leerGastosPos_)
+// También responde, solo lectura, la planilla entera para que el POS
+// tenga la misma información en su base SQLite:
+//   { accion: "planilla", token: "..." }  (ver leerPlanillaPos_)
+// y, por compatibilidad con versiones anteriores del POS, "gastos" (un mes)
+// y "ventas" (solo filas cliente).
 //
 // Convivencia con el bot (dos proyectos, no comparten lock ni cache):
 //  - Se escribe con appendRow, que es atómico: aunque el bot escriba en
@@ -67,7 +70,11 @@ function doPost(e) {
     if (data && data.accion === 'gastos') {
       return responderJson_(leerGastosPos_(data, leerConfigPos_()));
     }
-    // Consulta de ventas (solo lectura) para importar a la base del POS.
+    // Planilla entera (solo lectura): el POS la copia a su base SQLite.
+    if (data && data.accion === 'planilla') {
+      return responderJson_(leerPlanillaPos_(data, leerConfigPos_()));
+    }
+    // Consulta de ventas (solo lectura) de versiones anteriores del POS.
     if (data && data.accion === 'ventas') {
       return responderJson_(leerVentasPos_(data, leerConfigPos_()));
     }
@@ -397,6 +404,69 @@ function leerVentasPos_(data, cfg) {
   return { ok: true, servicio: 'pos-planilla', ventas: ventas };
 }
 
+// ========================================
+// PLANILLA ENTERA (solo lectura, para copiarla a SQLite)
+// ----------------------------------------
+// Devuelve TODAS las filas de TODAS las hojas de movimientos (anuales 'yyyy'
+// y mensuales 'yyyy-MM'), de cualquier tipo (cliente, proveedores, gasto
+// personal, mercadería, desperdicio...), más la lista de proveedores. El POS
+// reemplaza con esto su copia completa en cada lectura, así que lo que el bot
+// reclasifica o elimina también se refleja allá. La división mes en curso /
+// hoja anual es solo de la planilla: en SQLite es una única tabla.
+// Pedido:    { accion: "planilla", token: "..." }
+// Respuesta: { ok, hojas, movimientos: [{ fecha, hora, tipo, monto, pagado }],
+//              proveedores: ["Coca", ...] }
+// "monto" va con el signo de la planilla (egresos en negativo). El orden es
+// por fecha y hora, y entre filas iguales el de la planilla (estable).
+// ========================================
+function leerPlanillaPos_(data, cfg) {
+  if (!cfg.posToken || !data || data.token !== cfg.posToken) {
+    return { ok: false, error: 'token invalido' };
+  }
+
+  const spreadsheet = SpreadsheetApp.openById(POS_CONFIG.SHEET_ID);
+  const patron = /^\d{4}(-\d{2})?$/;
+  const movimientos = [];
+  let hojas = 0;
+
+  // Primero las anuales (meses archivados, más viejos) y después las mensuales.
+  const lista = spreadsheet.getSheets().filter(function (sh) { return patron.test(sh.getName()); });
+  lista.sort(function (a, b) { return a.getName() < b.getName() ? -1 : (a.getName() > b.getName() ? 1 : 0); });
+
+  lista.forEach(function (sheet) {
+    hojas++;
+    const datos = sheet.getDataRange().getValues();
+    for (let i = 1; i < datos.length; i++) {
+      const fila = datos[i];
+      if (!fila[0]) continue;
+      movimientos.push({
+        fecha: normalizarFechaPos_(fila[0]),
+        hora: normalizarHoraPos_(fila[1]),
+        tipo: String(fila[2] || '').trim(),
+        monto: parseFloat(fila[3]) || 0,
+        pagado: fila[4] === true || String(fila[4]).toUpperCase() === 'TRUE',
+      });
+    }
+  });
+
+  // sort de V8 es estable: filas iguales quedan en el orden de la planilla.
+  movimientos.sort(function (a, b) {
+    const x = a.fecha + a.hora;
+    const y = b.fecha + b.hora;
+    return x < y ? -1 : (x > y ? 1 : 0);
+  });
+
+  let proveedores = [];
+  const hojaProv = spreadsheet.getSheetByName('proveedores');
+  if (hojaProv) {
+    proveedores = hojaProv.getDataRange().getValues().slice(1)
+      .map(function (f) { return String(f[0] || '').trim(); })
+      .filter(function (n) { return n.length > 0; });
+  }
+
+  return { ok: true, servicio: 'pos-planilla', hojas: hojas, movimientos: movimientos, proveedores: proveedores };
+}
+
 // Igual que normalizarHora() del bot: Sheets convierte "21:12" en una hora real.
 function normalizarHoraPos_(valorCelda) {
   if (valorCelda instanceof Date) {
@@ -569,4 +639,18 @@ function probarVentasPos() {
   r.ventas.slice(-10).forEach(function (v) {
     Logger.log(v.fecha + ' ' + v.hora + '  $' + v.monto);
   });
+}
+
+// Muestra en el registro lo que el POS copia a su base: filas por tipo.
+function probarPlanillaPos() {
+  const cfg = leerConfigPos_();
+  const r = leerPlanillaPos_({ token: cfg.posToken }, cfg);
+  if (!r.ok) { Logger.log(JSON.stringify(r)); return; }
+  const porTipo = {};
+  r.movimientos.forEach(function (m) {
+    const t = m.tipo === 'cliente' ? 'cliente' : 'gastos y otros';
+    porTipo[t] = (porTipo[t] || 0) + 1;
+  });
+  Logger.log(r.hojas + ' hojas, ' + r.movimientos.length + ' filas: ' + JSON.stringify(porTipo) +
+    ', ' + r.proveedores.length + ' proveedores en la lista');
 }

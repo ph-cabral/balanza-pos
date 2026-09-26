@@ -330,6 +330,30 @@ CREATE TABLE IF NOT EXISTS sheets_importadas (
 );
 `);
 
+// --- Tabla: copia completa de la planilla de Google -------------------------
+// Todas las filas de todas las hojas de movimientos (ventas "cliente" y
+// gastos: proveedores, gasto personal, mercaderia, desperdicio...), en UNA
+// sola tabla: la division mes en curso / hoja anual es de la planilla y aca
+// no hace falta. Se reemplaza entera en cada lectura (ver sheets-importar.js),
+// asi lo que el bot reclasifica o elimina tambien se refleja. Monto con el
+// signo de la planilla (egresos en negativo), en centavos.
+db.exec(`
+CREATE TABLE IF NOT EXISTS planilla (
+  id             INTEGER PRIMARY KEY,
+  fecha          TEXT    NOT NULL,
+  hora           TEXT    NOT NULL DEFAULT '',
+  tipo           TEXT    NOT NULL DEFAULT '',
+  monto_centavos INTEGER NOT NULL,
+  pagado         INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS ix_planilla_fecha ON planilla(fecha, hora);
+
+CREATE TABLE IF NOT EXISTS planilla_proveedores (
+  id     INTEGER PRIMARY KEY,
+  nombre TEXT NOT NULL
+);
+`);
+
 // --- Sentencias preparadas --------------------------------------------------
 const S = {
   listarProductos: db.prepare(`
@@ -464,7 +488,7 @@ const S = {
 
   ventasRecientes: db.prepare(`
     SELECT id, fecha, total_centavos, items_count, arca_estado, estacion_id, estacion, origen
-    FROM ventas ORDER BY id DESC LIMIT ?
+    FROM ventas ORDER BY fecha DESC, id DESC LIMIT ?
   `),
 
   ventaPorId: db.prepare(`
@@ -552,6 +576,35 @@ const S = {
     SELECT COUNT(*) AS importadas, MAX(creado_en) AS ultima
     FROM sheets_importadas
   `),
+  sheetsImportadasTodas: db.prepare(`SELECT clave, venta_id FROM sheets_importadas`),
+  borrarVenta: db.prepare(`DELETE FROM ventas WHERE id = ?`),
+  // Ventas del POS que ya estan escritas en la planilla (para no importarlas de vuelta).
+  ventasPosEnPlanilla: db.prepare(`
+    SELECT substr(v.fecha, 1, 10) AS fecha, substr(v.fecha, 12, 5) AS hora, v.total_centavos
+    FROM ventas v JOIN sheets_cola c ON c.venta_id = v.id
+    WHERE c.estado = 'enviada' AND v.origen = 'pos'
+  `),
+  planillaVaciar: db.prepare(`DELETE FROM planilla`),
+  planillaInsertar: db.prepare(`
+    INSERT INTO planilla (id, fecha, hora, tipo, monto_centavos, pagado)
+    VALUES (@id, @fecha, @hora, @tipo, @monto_centavos, @pagado)
+  `),
+  planillaProvVaciar: db.prepare(`DELETE FROM planilla_proveedores`),
+  planillaProvInsertar: db.prepare(`INSERT INTO planilla_proveedores (id, nombre) VALUES (?, ?)`),
+  planillaResumen: db.prepare(`
+    SELECT COUNT(*) AS movimientos,
+           COALESCE(SUM(tipo = 'cliente'), 0) AS clientes,
+           COALESCE(SUM(tipo <> 'cliente' AND tipo <> '' AND monto_centavos <> 0), 0) AS gastos,
+           MIN(fecha) AS desde, MAX(fecha) AS hasta
+    FROM planilla
+  `),
+  planillaGastos: db.prepare(`
+    SELECT fecha, hora, tipo AS detalle, monto_centavos, pagado
+    FROM planilla
+    WHERE fecha >= ? AND fecha < ? AND tipo <> 'cliente' AND tipo <> '' AND monto_centavos <> 0
+    ORDER BY fecha, hora, id
+  `),
+  planillaProveedores: db.prepare(`SELECT nombre FROM planilla_proveedores ORDER BY id`),
 
   getConfig: db.prepare(`SELECT valor FROM config_kv WHERE clave = ?`),
   setConfig: db.prepare(`
@@ -903,6 +956,79 @@ const api = {
     return ventaId;
   }),
   sheetsImportadasResumen: () => S.sheetsImportadasResumen.get(),
+
+  /**
+   * Copia completa de la planilla (ver sheets-importar.js). En UNA transaccion:
+   *  1. reemplaza la tabla planilla y la lista de proveedores con lo leido;
+   *  2. concilia las ventas origen 'sheet' con las filas "cliente" de la
+   *     planilla que no escribio este POS: agrega las nuevas y borra las que
+   *     ya no estan (el bot las reclasifico como gasto o las elimino).
+   * `movimientos`: [{ fecha, hora, tipo, monto_centavos, pagado }] en el orden
+   * de la planilla. Devuelve cuantas ventas agrego y cuantas borro.
+   */
+  sincronizarPlanilla: db.transaction(({ movimientos, proveedores, leidoEn }) => {
+    S.planillaVaciar.run();
+    movimientos.forEach((m, i) => S.planillaInsertar.run({
+      id: i + 1,
+      fecha: m.fecha,
+      hora: m.hora || '',
+      tipo: m.tipo || '',
+      monto_centavos: m.monto_centavos,
+      pagado: m.pagado ? 1 : 0,
+    }));
+    S.planillaProvVaciar.run();
+    (proveedores || []).forEach((n, i) => S.planillaProvInsertar.run(i + 1, n));
+
+    // Cuantas filas de cada fecha|hora|monto escribio este POS en la planilla.
+    const delPos = new Map();
+    for (const v of S.ventasPosEnPlanilla.all()) {
+      const base = `${v.fecha}|${v.hora}|${v.total_centavos}`;
+      delPos.set(base, (delPos.get(base) || 0) + 1);
+    }
+
+    // Filas "cliente" que no son de este POS -> clave fecha|hora|monto|n.
+    const vistos = new Map();
+    const deseadas = new Map(); // clave -> fila
+    for (const m of movimientos) {
+      if (m.tipo !== 'cliente' || !(m.monto_centavos > 0)) continue;
+      const base = `${m.fecha}|${m.hora || ''}|${m.monto_centavos}`;
+      const n = (vistos.get(base) || 0) + 1;
+      vistos.set(base, n);
+      const propias = delPos.get(base) || 0;
+      if (n <= propias) continue; // es una venta de este POS copiada a la planilla
+      deseadas.set(`${base}|${n - propias}`, m);
+    }
+
+    let borradas = 0;
+    for (const f of S.sheetsImportadasTodas.all()) {
+      if (deseadas.has(f.clave)) { deseadas.delete(f.clave); continue; } // ya estaba
+      S.borrarVenta.run(f.venta_id); // cascada: items y clave
+      borradas++;
+    }
+    let nuevas = 0;
+    for (const [clave, m] of deseadas) {
+      const hora = /^\d{2}:\d{2}$/.test(m.hora || '') ? m.hora : '00:00';
+      api.importarVentaDeSheet({ fecha: `${m.fecha} ${hora}:00`, total_centavos: m.monto_centavos, clave });
+      nuevas++;
+    }
+
+    S.setConfig.run('planilla_leida', leidoEn || new Date().toISOString());
+    return { nuevas, borradas };
+  }),
+
+  planillaResumen: () => ({
+    ...S.planillaResumen.get(),
+    proveedores: S.planillaProveedores.all().length,
+    leida: (S.getConfig.get('planilla_leida') || {}).valor || null,
+  }),
+
+  /** Gastos (toda fila que no es "cliente") de un mes 'AAAA-MM', de la copia local. */
+  planillaGastosDelMes: (mes) => {
+    const [a, m] = mes.split('-').map(Number);
+    const sig = m === 12 ? `${a + 1}-01` : `${a}-${String(m + 1).padStart(2, '0')}`;
+    return S.planillaGastos.all(`${mes}-01`, `${sig}-01`).map((g) => ({ ...g, pagado: g.pagado === 1 }));
+  },
+  planillaProveedores: () => S.planillaProveedores.all().map((f) => f.nombre),
 
   getConfig: (clave) => {
     const row = S.getConfig.get(clave);
