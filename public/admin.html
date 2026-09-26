@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0f1419">
 <title>Administración · Balanza POS</title>
 <link rel="stylesheet" href="/css/app.css?v=6">
-<link rel="stylesheet" href="/css/admin.css?v=10">
+<link rel="stylesheet" href="/css/admin.css?v=11">
 </head>
 <body>
 
@@ -125,6 +125,11 @@
         Los “por unidad” se suman de a uno, ideal para lo que se escanea. El grupo
         y la marca se eligen de las listas cargadas en las pestañas “Grupos” y
         “Marcas”.
+      </p>
+      <p class="ayuda">
+        Escaneá un código en cualquier pestaña: si el artículo existe se abre su
+        ficha para cambiarle el precio; si no, el alta con el código ya cargado.
+        Con el cursor en “Código de barras”, el escaneo solo completa ese campo.
       </p>
 
       <form id="formProducto">
@@ -452,6 +457,7 @@ Gaseosa 500ml;Coca Cola;Bebidas;unidad;1500;7790895000997"></textarea>
 
 <div class="avisos" id="avisos"></div>
 
-<script src="/js/admin.js?v=10"></script>
+<script src="/js/scanner.js?v=1"></script>
+<script src="/js/admin.js?v=12"></script>
 </body>
 </html>

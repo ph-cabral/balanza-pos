@@ -177,6 +177,32 @@ async function parteServidor(dir) {
   chequear('con dos equipos en la estación, el código va a uno solo (el último usado)', enA === 1 && enA2 === 0, `${enA} / ${enA2}`);
   A2.close();
 
+  // Administracion abierta en un equipo de la estacion: si es la ultima usada,
+  // el codigo es para ella (ficha o alta del articulo), no para un carrito.
+  const ADM1 = await wsCliente('?todo=1&estacion=e1');
+  await esperar(100);
+  ADM1.send(JSON.stringify({ tipo: 'activo' }));
+  await esperar(100);
+  A.msgs.length = 0; ADM.msgs.length = 0; ADM1.msgs.length = 0;
+  await api('POST', '/escaner/simular', { estacion: 'e1', codigo: '7790000000017' });
+  await esperar(200);
+  const aAdm1 = ADM1.msgs.filter((m) => m.tipo === 'escaneo');
+  chequear('administración en la estación, última usada: el código es para ella', aAdm1.length === 1 && aAdm1[0].paraEste === true);
+  chequear('y no llega al carrito del POS', !A.msgs.some((m) => m.tipo === 'escaneo'));
+  chequear('administración sin estación lo ve como entregado a otro', ADM.msgs.some((m) => m.tipo === 'escaneo' && m.entregado && !m.paraEste));
+  A.send(JSON.stringify({ tipo: 'activo' }));
+  await esperar(100);
+  A.msgs.length = 0; ADM1.msgs.length = 0;
+  await api('POST', '/escaner/simular', { estacion: 'e1', codigo: '7790000000017' });
+  await esperar(200);
+  chequear('si después se usa el POS, el código vuelve al carrito',
+    A.msgs.some((m) => m.tipo === 'escaneo') && ADM1.msgs.some((m) => m.tipo === 'escaneo' && !m.paraEste));
+  A.msgs.length = 0; ADM1.msgs.length = 0;
+  await api('POST', '/escaner/simular', { escaner: 's2', codigo: '7790000000017' });
+  await esperar(200);
+  chequear('administración de la estación 1 no toma el escáner 2', ADM1.msgs.some((m) => m.tipo === 'escaneo' && !m.paraEste));
+  ADM1.close();
+
   // Ventas con estacion
   const v = await api('POST', '/ventas', { items: [{ producto_id: prod.producto.id, tipo: 'unidad', cantidad: 2 }], estacion: 'e2' });
   const lista = await api('GET', '/ventas?limite=5');
@@ -290,6 +316,65 @@ async function partePantalla() {
     await pag.screenshot({ path: path.join(salida, 'estaciones-3-admin.png'), fullPage: true });
     await pag.locator('#btnDescartar').click();
     chequear('descartar vuelve a lo guardado', (await pag.locator('.fila-estacion').count()) === 2);
+
+    // Escanear en administracion: abre la ficha del articulo o el alta.
+    // Este equipo quedo en Mostrador 1, asi que el escaner 1 le habla a admin.
+    const titulo = () => pag.locator('#formTitulo').textContent();
+    const foco = () => pag.evaluate(() => document.activeElement && document.activeElement.id);
+    await api('POST', '/escaner/simular', { estacion: 'e1', codigo: '7790000000017' });
+    await esperar(900);
+    chequear('admin: escanear un código existente abre su ficha',
+      !(await pag.locator('[data-panel="productos"]').isHidden()) && (await titulo()) === 'Editando: Gaseosa prueba');
+    chequear('con el precio listo para cambiar', (await foco()) === 'prodPrecio' &&
+      (await pag.locator('#prodPrecio').inputValue()) === '1500.00');
+    await pag.screenshot({ path: path.join(salida, 'estaciones-4-admin-escaneo-existe.png') });
+
+    await api('POST', '/escaner/simular', { estacion: 'e1', codigo: '7791234567890' });
+    await esperar(900);
+    chequear('admin: un código nuevo abre el alta con el código cargado',
+      /^Nuevo producto/.test(await titulo()) && (await pag.locator('#prodCodigo').inputValue()) === '7791234567890');
+    chequear('por unidad y con el cursor en el nombre',
+      (await pag.locator('#prodTipo').inputValue()) === 'unidad' && (await foco()) === 'prodNombre');
+    await pag.screenshot({ path: path.join(salida, 'estaciones-5-admin-escaneo-alta.png') });
+    await pag.locator('#prodNombre').fill('Alfajor prueba');
+    await pag.locator('#prodPrecio').fill('900');
+    await pag.locator('#prodPrecio').press('Enter');
+    await esperar(700);
+    const alta = await api('GET', '/productos/codigo/7791234567890');
+    chequear('guardar da de alta el artículo con ese código', alta.ok && alta.producto.nombre === 'Alfajor prueba' && alta.producto.tipo === 'unidad');
+
+    // Escaner "teclado" (PC): tecleo rapido + Enter, escribiendo sobre el buscador.
+    await pag.locator('#filtroProductos').click();
+    await pag.keyboard.type('7791234567890', { delay: 8 });
+    await pag.keyboard.press('Enter');
+    await esperar(900);
+    chequear('escáner teclado: abre la ficha del artículo', (await titulo()) === 'Editando: Alfajor prueba');
+    chequear('y no deja el código escrito en el buscador', (await pag.locator('#filtroProductos').inputValue()) === '');
+    await pag.locator('#prodPrecio').fill('950');
+    await pag.locator('#prodPrecio').press('Enter');
+    await esperar(700);
+    const nuevoPrecio = await api('GET', '/productos/codigo/7791234567890');
+    chequear('cambiar el precio y Enter lo guarda', nuevoPrecio.producto.precio_centavos === 95000);
+
+    // Con el cursor en "Codigo de barras" el escaneo solo completa ese campo.
+    await pag.locator('#prodNombre').fill('Otro sin código');
+    await pag.locator('#prodCodigo').click();
+    await pag.keyboard.type('7790000000017', { delay: 8 });
+    await pag.keyboard.press('Enter');
+    await esperar(700);
+    chequear('escanear en el campo código no sale del formulario',
+      (await titulo()) === 'Nuevo producto' && (await pag.locator('#prodNombre').inputValue()) === 'Otro sin código' &&
+      (await pag.locator('#prodCodigo').inputValue()) === '7790000000017');
+    await pag.locator('#btnCancelar').click().catch(() => {});
+    await pag.evaluate(() => document.getElementById('formProducto').reset());
+
+    // Si despues se vuelve a usar el POS en la estacion, el codigo va al carrito.
+    await pag.goto(URL, { waitUntil: 'networkidle' });
+    await esperar(700);
+    const antes = await pag.locator('#carritoLista .item').count();
+    await api('POST', '/escaner/simular', { estacion: 'e1', codigo: '7790000000017' });
+    await esperar(900);
+    chequear('de vuelta en el POS, el escáner carga el carrito', (await pag.locator('#carritoLista .item').count()) === antes + 1);
 
     chequear('sin errores de JavaScript', errores.length === 0, errores.join(' | ') || 'ninguno');
   } finally {

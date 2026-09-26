@@ -10,6 +10,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const http = require('http');
+const https = require('https');
+const net = require('net');
 const express = require('express');
 const { WebSocketServer } = require('ws');
 
@@ -18,6 +20,7 @@ const crearApi = require('./routes/api');
 const crearSheets = require('./sheets');
 const crearGastos = require('./gastos');
 const crearSheetsImportar = require('./sheets-importar');
+const tls = require('./tls');
 
 const RAIZ = path.join(__dirname, '..');
 // POS_CONFIG permite correr las pruebas con otra configuracion sin tocar la real.
@@ -151,6 +154,8 @@ app.get('/api/red', (_req, res) => {
     puerto,
     direcciones: ips.filter((x) => !x.virtual).map((x) => `http://${x.ip}:${puerto}`),
     adaptadores: ips.map((x) => ({ ...x, url: `http://${x.ip}:${puerto}` })),
+    // Misma direccion con https: la que hace falta para usar la camara del celular.
+    seguras: servidorHttps ? ips.filter((x) => !x.virtual).map((x) => `https://${x.ip}:${puerto}`) : [],
   });
 });
 
@@ -182,13 +187,59 @@ app.use((req, res) => {
   res.sendFile(path.join(RAIZ, 'public', 'index.html'));
 });
 
-const server = http.createServer(app);
+// --- HTTP y HTTPS en el mismo puerto ----------------------------------------
+// La camara del celular (lector de codigos) solo anda en paginas seguras: HTTPS
+// o localhost. Para no abrir otro puerto en el firewall ni cambiar las
+// direcciones que ya se usan, el mismo puerto atiende los dos: se mira el
+// primer byte de cada conexion (0x16 = saludo TLS) y se la pasa al servidor que
+// corresponde. http://IP:3000 sigue igual; https://IP:3000 es la version segura.
+// Certificado autofirmado propio de cada PC en data/tls/ (ver src/tls.js).
+const servidorHttp = http.createServer(app);
+let servidorHttps = null;
+if (!config.http || config.http.https !== false) {
+  try {
+    const cert = tls.cargarOCrear(process.env.POS_TLS || path.join(process.env.POS_DATA || path.join(RAIZ, 'data'), 'tls'));
+    servidorHttps = https.createServer({ key: cert.key, cert: cert.cert }, app);
+    servidorHttps.on('tlsClientError', () => { /* el navegador corto al ver el certificado: normal */ });
+    if (cert.nuevo) console.log('  HTTPS: se generó el certificado de esta PC (data/tls/)');
+  } catch (e) {
+    console.warn(`  HTTPS apagado: ${e.message}`);
+  }
+}
+
+const conexiones = new Set();
+const server = net.createServer((socket) => {
+  conexiones.add(socket);
+  socket.on('close', () => conexiones.delete(socket));
+  socket.on('error', () => { /* conexion cortada antes de empezar */ });
+  // Una conexion que nunca manda nada (pre-conexion del navegador) no queda colgada.
+  socket.setTimeout(120000, () => socket.destroy());
+  function alLeer() {
+    const primero = socket.read(1);
+    if (primero === null) return socket.once('readable', alLeer);
+    socket.setTimeout(0);
+    socket.unshift(primero);
+    const destino = primero[0] === 0x16 && servidorHttps ? servidorHttps : servidorHttp;
+    destino.emit('connection', socket);
+  }
+  socket.once('readable', alLeer);
+});
 
 // --- WebSocket: peso y escaneos por estacion ---------------------------------
 // Cada equipo de venta se conecta con /ws?estacion=<id> y recibe solo el peso
 // de la balanza y los codigos del escaner de su estacion. Administracion se
-// conecta con /ws?todo=1 y recibe todo, marcado con el id del equipo.
-const wss = new WebSocketServer({ server, path: '/ws' });
+// conecta con /ws?todo=1 y recibe todo, marcado con el id del equipo (con
+// &estacion=<id> si se abrio desde un equipo de venta: ver 'codigo').
+const wss = new WebSocketServer({ noServer: true });
+
+function alPedirUpgrade(req, socket, head) {
+  let ruta = '';
+  try { ruta = new URL(req.url, 'http://x').pathname; } catch (_) { /* url rara */ }
+  if (ruta !== '/ws') return socket.destroy();
+  wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+}
+servidorHttp.on('upgrade', alPedirUpgrade);
+if (servidorHttps) servidorHttps.on('upgrade', alPedirUpgrade);
 
 function enviar(ws, payload) {
   if (ws.readyState === 1) {
@@ -226,22 +277,32 @@ estaciones.on('escaner', (id, estado) => {
 
 // Un codigo leido va a UN solo equipo de la estacion: el ultimo que se uso
 // (toque o tecla). Si hubiera tablet y celular en el mismo puesto, el producto
-// no se agrega dos veces.
+// no se agrega dos veces. Administracion abierta en un equipo de la estacion
+// (/ws?todo=1&estacion=<id>) tambien compite: si es la ultima usada, el codigo
+// es para ella (abre el articulo para cambiarle el precio, o el alta si no
+// existe) y no llega al carrito de nadie.
 estaciones.on('codigo', (id, codigo) => {
-  let entregado = false;
+  const elegidos = new Set();
   for (const e of estaciones.estacionesConEscaner(id)) {
-    const cands = clientesDeEstacion(e.id);
+    const cands = clientesDeEstacion(e.id).concat(clientesAdmin().filter((c) => c.estacionAdmin === e.id));
     if (!cands.length) continue;
     cands.sort((a, b) => (b.activoEn || 0) - (a.activoEn || 0));
-    enviar(cands[0], { tipo: 'escaneo', escaner: id, codigo });
-    entregado = true;
+    elegidos.add(cands[0]);
   }
+  const entregado = elegidos.size > 0;
+  for (const c of elegidos) if (!c.todo) enviar(c, { tipo: 'escaneo', escaner: id, codigo });
   if (!entregado) console.log(`  [escaner ${id}] código ${codigo} leído sin ningún equipo en su estación`);
-  for (const c of clientesAdmin()) enviar(c, { tipo: 'escaneo', escaner: id, codigo, entregado });
+  for (const c of clientesAdmin()) {
+    enviar(c, { tipo: 'escaneo', escaner: id, codigo, entregado, paraEste: elegidos.has(c) });
+  }
 });
 
 function saludar(ws) {
   if (ws.todo) {
+    // Administracion abierta desde un equipo de venta: recuerda su estacion
+    // para recibir los codigos de ese escaner (si existe todavia).
+    const propia = ws.estacionPedida ? estaciones.estacion(ws.estacionPedida) : null;
+    ws.estacionAdmin = propia ? propia.id : null;
     enviar(ws, { tipo: 'version', version: VERSION.commit });
     for (const d of estaciones.balanzas.values()) enviar(ws, { tipo: 'balanza', balanza: d.id, estado: d.snapshot() });
     for (const d of estaciones.escaneres.values()) enviar(ws, { tipo: 'escaner', escaner: d.id, estado: d.snapshot() });
@@ -326,6 +387,11 @@ server.listen(puerto, config.http.host || '0.0.0.0', () => {
     console.log(`  Tablet:   http://${x.ip}:${puerto}   (${x.adaptador})`);
   }
   console.log(`  Admin:    http://localhost:${puerto}/admin.html`);
+  if (servidorHttps) {
+    for (const x of ipsLocales().filter((i) => !i.virtual)) {
+      console.log(`  Cámara:   https://${x.ip}:${puerto}   (celular: aceptar el aviso de seguridad la primera vez)`);
+    }
+  }
   console.log(`  Sheets:   ${sheets.habilitado() ? 'copiando ventas a Google Sheets' : 'apagado'}`);
   console.log(`  Importar: ${sheetsImportar.habilitado() ? 'copiando la planilla (ventas del bot y gastos) a la base' : 'apagado'}`);
   console.log(`  Versión:  ${VERSION.corto}${VERSION.fecha ? ' (' + VERSION.fecha + ')' : ''}`);
@@ -339,6 +405,10 @@ function cerrar() {
   sheetsImportar.detener();
   estaciones.detener();
   server.close(() => process.exit(0));
+  // Las conexiones abiertas (keep-alive, WebSocket) no dejan terminar el
+  // close(): se cortan para que el puerto quede libre enseguida.
+  for (const c of wss.clients) { try { c.terminate(); } catch (_) { /* ya cerrada */ } }
+  for (const s of conexiones) s.destroy();
   setTimeout(() => process.exit(0), 2000).unref();
 }
 

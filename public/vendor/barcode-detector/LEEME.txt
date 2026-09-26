@@ -1,0 +1,7 @@
+barcode-detector 3.2.2 (dist/iife/ponyfill.js) - MIT
+zxing-wasm 3.1.3 (dist/reader/zxing_reader.wasm) - MIT, basado en zxing-cpp (Apache-2.0)
+
+Se sirven desde el POS para que el lector con la camara funcione sin internet.
+Los usa public/js/camara.js solo cuando el navegador no trae BarcodeDetector.
+Para actualizar: npm pack barcode-detector y zxing-wasm (la version que pide
+barcode-detector) y copiar esos dos archivos.

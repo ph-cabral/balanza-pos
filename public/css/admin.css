@@ -392,3 +392,10 @@ td select.asignar {
   .gastos-tabla tr.mov td:first-child { padding-left: 20px; }
 }
 .gastos-tabla tr.fila-total td { font-weight: 700; border-top: 1px solid var(--borde); border-bottom: 0; }
+
+/* Formulario de producto recien abierto por un escaneo. */
+.panel.resaltado { animation: resaltar-escaneo 1.4s ease-out; }
+@keyframes resaltar-escaneo {
+  0%   { box-shadow: 0 0 0 3px var(--acento); }
+  100% { box-shadow: 0 0 0 3px transparent; }
+}

@@ -107,6 +107,48 @@ Eso vale para un lector enchufado **al mismo equipo donde se vende** (modo tecla
 Si los lectores van enchufados a la PC servidor y se vende desde tablets o celulares,
 ver la sección siguiente: hay que pasarlos a modo USB-COM.
 
+### Escanear en administración (cambiar precios y dar de alta)
+
+Con administración abierta, escanear un código (en cualquier pestaña) lleva a
+**Productos**:
+
+- **Si el código ya es de un artículo**, se abre su ficha con el precio seleccionado:
+  se escribe el precio nuevo y Enter. Si estaba dado de baja lo avisa (al guardar
+  vuelve a la venta).
+- **Si el código no existe**, se abre el alta con el código ya cargado, "por unidad"
+  y el cursor en el nombre.
+- **Con el cursor en "Código de barras"** el escaneo solo completa ese campo (para
+  asignarle un código a un artículo que no lo tenía).
+
+Funciona con el lector modo teclado de la PC y con el escáner serie de una estación
+cuando administración se abrió desde un equipo de esa estación: el código va al
+último equipo usado del puesto (la pantalla de venta o administración), así que no
+termina en un carrito mientras se cargan precios. Al volver a la venta, el escáner
+vuelve a cargar el carrito.
+
+### Con la cámara del celular o la tablet
+
+En la pantalla de venta, el primer casillero de los grupos es **Escanear (con la
+cámara)**. Abre la cámara trasera con un marco: se apunta al código, vibra, se cierra
+sola y el artículo entra al carrito igual que con el lector USB (por unidad suma uno;
+por peso toma el peso de la balanza). La X o el botón "atrás" del celular la cierran
+sin salir del POS. Si el código no tiene artículo, avisa. Con poca luz aparece el
+botón de linterna (en los celulares que la dejan usar).
+
+**La cámara solo anda en la dirección segura.** El navegador no deja usar la cámara
+en `http://IP:3000`; hay que entrar por **`https://IP:3000`** (mismo número, con
+**s**). El POS atiende las dos en el mismo puerto, con un certificado propio que
+genera la primera vez en `data/tls/`. La primera vez el celular avisa "La conexión no
+es privada": tocar **Configuración avanzada → Continuar al sitio**. Desde http, el
+botón de cámara ofrece "Ir a la versión segura" (si no hay una venta abierta). La
+dirección exacta está en Administración → Estaciones → *Entrar desde otro equipo*.
+En la dirección nueva el equipo vuelve a preguntar la estación y las columnas (se
+guardan por dirección).
+
+Lee EAN-13, EAN-8, UPC, Code 128, Code 39, ITF, Codabar y QR. En Chrome de Android
+usa el lector del propio navegador; en los demás (Brave, iPhone, PC) usa ZXing, que
+viene incluido en `public/vendor/barcode-detector/` y funciona sin internet.
+
 ---
 
 ## Estaciones de trabajo (varias balanzas y escáneres)
@@ -220,6 +262,8 @@ node scripts/test-deploy.js  lo que usa el actualizador automático (puerto 3058
 node scripts/test-gastos.js  gastos por proveedor: Codigo.gs con planilla simulada y /api/gastos (puerto 3059)
 node scripts/test-importar-sheets.js  copia de la planilla a la base: ventas del bot, gastos,
                                  reclasificadas/eliminadas, sin reimportar las del POS (puerto 3060)
+node scripts/test-camara.js  lector con la cámara (cámara falsa de Chromium) y https en el
+                                 mismo puerto (puerto 3061)
 npm test                     todas menos la de pantalla
 ```
 

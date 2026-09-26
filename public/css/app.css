@@ -843,3 +843,133 @@ input  { font-family: inherit; font-size: inherit; }
   0%   { background: #245440; }
   100% { background: var(--panel-alto); }
 }
+
+/* ---------- Leer codigos con la camara ---------- */
+
+/* Boton entre los grupos (primer casillero). No es un grupo: no se arrastra
+   ni se guarda en el orden, y en modo "ordenar" se esconde. */
+.tile-camara {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 4px;
+  min-height: 118px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px dashed var(--borde);
+  border-left: 4px solid var(--info);
+  border-radius: var(--radio);
+  color: var(--texto);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: transform .06s, border-color .12s;
+}
+.tile-camara:active { transform: scale(.97); border-color: var(--info); }
+.tile-camara svg { width: 36px; height: 36px; color: var(--info); margin-bottom: auto; }
+.tile-camara .grupo-nombre { color: var(--texto); }
+.grupos[data-columnas="2"] .tile-camara,
+.grupos[data-columnas="3"] .tile-camara { min-height: 132px; }
+.grupos.ordenando .tile-camara { display: none; }
+
+.camara {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: #000;
+  color: #fff;
+  overflow: hidden;
+  touch-action: none;
+}
+.camara-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* Todo oscurecido menos el marco: la sombra enorme del marco hace de velo. */
+.camara-velo {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.camara-marco {
+  position: relative;
+  width: min(82vw, 520px);
+  height: min(34vw, 220px);
+  border: 3px solid rgba(255,255,255,.9);
+  border-radius: 14px;
+  box-shadow: 0 0 0 200vmax rgba(0,0,0,.55);
+  transition: border-color .15s;
+}
+.camara-laser {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 50%;
+  height: 2px;
+  background: var(--error);
+  box-shadow: 0 0 8px var(--error);
+  animation: camara-laser 1.6s ease-in-out infinite;
+}
+@keyframes camara-laser {
+  0%, 100% { transform: translateY(-40px); opacity: .6; }
+  50%      { transform: translateY(40px);  opacity: 1; }
+}
+.camara.leido .camara-marco { border-color: var(--acento-fuerte); }
+.camara.leido .camara-laser { display: none; }
+
+.camara-arriba {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: max(12px, env(safe-area-inset-top)) 14px 12px;
+  background: linear-gradient(rgba(0,0,0,.6), transparent);
+}
+.camara-titulo { flex: 1; font-size: 18px; font-weight: 700; }
+.camara-btn {
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255,255,255,.16);
+  color: #fff;
+  cursor: pointer;
+}
+.camara-btn[hidden] { display: none; }
+.camara-btn svg { width: 26px; height: 26px; }
+.camara-btn:active { background: rgba(255,255,255,.3); }
+.camara-linterna.prendida { background: #f5c542; color: #1a1300; }
+
+.camara-abajo {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 16px 20px max(24px, env(safe-area-inset-bottom));
+  text-align: center;
+  background: linear-gradient(transparent, rgba(0,0,0,.7));
+}
+.camara-estado { font-size: 18px; font-weight: 600; }
+.camara.leido .camara-estado { color: var(--acento-fuerte); font-variant-numeric: tabular-nums; }
+.camara-ayuda { margin-top: 8px; font-size: 14px; line-height: 1.4; color: rgba(255,255,255,.8); }
+.camara-ayuda[hidden] { display: none; }
+
+/* Avisos largos con boton en pantalla angosta: el boton pasa abajo y el texto
+   usa todo el ancho (si no, queda una columna finita de palabras). */
+@media (max-width: 600px) {
+  .aviso { flex-wrap: wrap; }
+  .aviso-texto { flex-basis: 100%; }
+  .aviso-accion { margin-left: auto; }
+}

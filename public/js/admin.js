@@ -690,6 +690,83 @@
       .catch(function (err) { avisar(err.message, 'error'); });
   });
 
+  // ------------------------------------------------------------- escaner
+
+  // Escanear un codigo en administracion (en cualquier pestaña) lleva a
+  // Productos: si el codigo ya es de un articulo, abre su ficha con el precio
+  // seleccionado para cargar el nuevo; si no existe, abre el alta con el codigo
+  // ya puesto. Sirve el escaner "teclado" de la PC (scanner.js) y el escaner
+  // serie de la estacion cuando administracion se abrio desde ese equipo.
+
+  // Estacion de este equipo: la guarda el POS (misma clave) al elegirla.
+  var estacionLocal = (function () {
+    try { return localStorage.getItem('pos.estacion') || null; } catch (e) { return null; }
+  })();
+
+  function marcarFormulario() {
+    var f = $('formProducto').closest('.panel');
+    f.classList.remove('resaltado');
+    void f.offsetWidth; // reinicia la animacion si se escanea dos veces seguidas
+    f.classList.add('resaltado');
+  }
+
+  function enfocar(campo) {
+    try { campo.focus({ preventScroll: true }); } catch (e) { campo.focus(); }
+    if (campo.select) campo.select();
+  }
+
+  function abrirPorCodigo(codigo) {
+    activarTab('productos');
+    // Lista fresca: el articulo pudo darse de alta desde otro equipo.
+    return cargarProductos().then(function () {
+      var p = estado.productos.filter(function (x) { return (x.codigo_barras || '') === codigo; })[0];
+      if (p) {
+        editar(p);
+        enfocar($('prodPrecio'));
+        if (p.activo) avisar(p.nombre + ': cargá el precio nuevo', 'ok');
+        else avisar(p.nombre + ' está dado de baja: al guardar vuelve a la venta', 'atencion');
+      } else {
+        limpiarForm();
+        $('prodCodigo').value = codigo;
+        // Lo que se escanea casi siempre se vende por unidad.
+        $('prodTipo').value = 'unidad';
+        actualizarLabelPrecio();
+        $('formTitulo').textContent = 'Nuevo producto · código ' + codigo;
+        enfocar($('prodNombre'));
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        avisar('Código ' + codigo + ' sin producto: completá el alta', 'atencion');
+      }
+      marcarFormulario();
+    });
+  }
+
+  /** El escaner "teclado" escribe en el campo con foco: se saca lo tecleado. */
+  function sacarTecleo(campo, codigo) {
+    if (!campo || typeof campo.value !== 'string' || campo.tagName === 'SELECT') return;
+    var v = campo.value;
+    if (v.slice(-codigo.length) === codigo) {
+      campo.value = v.slice(0, -codigo.length);
+      campo.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+
+  function alEscanear(codigo, porTeclado) {
+    codigo = String(codigo || '').trim();
+    if (!codigo) return;
+    var foco = document.activeElement;
+    // Con el cursor en "Código de barras" el escaneo es para ese campo (asignar
+    // un codigo a un articulo que no lo tenia): no se sale del formulario.
+    if (foco === $('prodCodigo') && !document.querySelector('[data-panel="productos"]').hidden) {
+      if (!porTeclado) $('prodCodigo').value = codigo;
+      return;
+    }
+    if (porTeclado) sacarTecleo(foco, codigo);
+    if (foco && foco.blur && foco !== document.body) foco.blur();
+    abrirPorCodigo(codigo);
+  }
+
+  if (window.Scanner) window.Scanner.onScan(function (codigo) { alEscanear(codigo, true); });
+
   // ------------------------------------------------------------- importar
 
   function parsearCSV(texto) {
@@ -1271,10 +1348,18 @@
 
   function conectarWS() {
     var proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    var ws = new WebSocket(proto + '://' + location.host + '/ws?todo=1');
+    var q = '?todo=1' + (estacionLocal ? '&estacion=' + encodeURIComponent(estacionLocal) : '');
+    var ws = new WebSocket(proto + '://' + location.host + '/ws' + q);
+    estado.ws = ws;
     ws.onmessage = function (ev) {
       var m = JSON.parse(ev.data);
-      if (m.tipo === 'balanza' && m.balanza) {
+      if (m.tipo === 'escaneo' && m.codigo) {
+        // Escaner serie: el codigo es para esta pantalla si el servidor la
+        // eligio (administracion abierta en el equipo de la estacion, el
+        // ultimo usado) o, en una PC sin estacion, si no lo tomo ningun equipo.
+        var libre = !m.entregado && !estacionLocal && document.visibilityState === 'visible';
+        if (m.paraEste || libre) alEscanear(m.codigo, false);
+      } else if (m.tipo === 'balanza' && m.balanza) {
         eq.vivos.balanza[m.balanza] = m.estado;
         pintarVivo('balanza', m.balanza);
         if ($('dgBalanza').value === m.balanza) pintarDiagnostico(m.estado);
@@ -1292,7 +1377,7 @@
         }
       }
     };
-    ws.onclose = function () { setTimeout(conectarWS, 2000); };
+    ws.onclose = function () { if (estado.ws === ws) estado.ws = null; setTimeout(conectarWS, 2000); };
     ws.onerror = function () { try { ws.close(); } catch (e) {} };
   }
 
@@ -1685,9 +1770,30 @@
         txt += '\n\nNo usar (adaptadores virtuales):\n' +
           virtuales.map(function (a) { return a.url + '   (' + a.adaptador + ')'; }).join('\n');
       }
+      if ((d.seguras || []).length) {
+        txt += '\n\nPara leer códigos con la cámara del celular (versión segura):\n' +
+          d.seguras.join('\n') +
+          '\nLa primera vez el navegador avisa que la conexión no es privada:\n' +
+          '"Configuración avanzada" → "Continuar al sitio".';
+      }
       $('direccionesRed').textContent = txt;
     }).catch(function () { $('direccionesRed').textContent = 'No se pudo leer la red.'; });
   }
+
+  // Tocar o teclear en administracion la marca como el equipo en uso de su
+  // estacion: el proximo codigo del escaner viene aca y no al carrito.
+  var ultimoActivo = 0;
+  function avisarActivo() {
+    var ahora = Date.now();
+    if (!estacionLocal || ahora - ultimoActivo < 1000) return;
+    ultimoActivo = ahora;
+    var ws = estado.ws;
+    if (ws && ws.readyState === 1) {
+      try { ws.send(JSON.stringify({ tipo: 'activo' })); } catch (e) {}
+    }
+  }
+  document.addEventListener('pointerdown', avisarActivo, true);
+  document.addEventListener('keydown', avisarActivo, true);
 
   // ------------------------------------------------------------- arranque
 

@@ -43,6 +43,8 @@
     estaciones: [],
     escaner: null,
     ws: null,
+    // ¿Se muestra el boton para leer codigos con la camara? (ver camara.js)
+    camara: false,
   };
 
   var $ = function (id) { return document.getElementById(id); };
@@ -454,6 +456,9 @@
   function pintarGrupos() {
     el.grupos.innerHTML = '';
 
+    // Primer casillero: leer un codigo con la camara del celular/tablet.
+    if (estado.camara) el.grupos.appendChild(botonCamara());
+
     if (!estado.grupos.length) {
       var v = document.createElement('div');
       v.className = 'vacio';
@@ -491,6 +496,49 @@
       frag.appendChild(b);
     });
     el.grupos.appendChild(frag);
+  }
+
+  var ICONO_CAMARA =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>' +
+    '<circle cx="12" cy="13" r="3"/></svg>';
+
+  function botonCamara() {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'tile-camara';
+    b.id = 'btnCamara';
+    b.innerHTML = ICONO_CAMARA +
+      '<div class="grupo-nombre">Escanear</div>' +
+      '<div class="grupo-cuenta">con la cámara</div>';
+    b.addEventListener('click', abrirCamara);
+    return b;
+  }
+
+  function abrirCamara() {
+    if (estado.ordenando || !window.Camara) return;
+    window.Camara.abrir({
+      alLeer: porCodigo,
+      alError: function (texto, accion) {
+        // Pasar a https recarga la pagina: con una venta a medio cargar, no.
+        if (accion && (estado.carrito.length || estado.cerrando)) {
+          avisar(texto + ' Cerrá la venta abierta antes de cambiar.', 'atencion');
+          return;
+        }
+        // Mensajes largos: con boton quedan 8 s en pantalla en vez de 2,6.
+        avisar(texto, accion ? 'atencion' : 'error', accion || { texto: 'Entendido', fn: function () {} });
+      },
+    });
+  }
+
+  function decidirCamara() {
+    if (!window.Camara) return;
+    window.Camara.hayCamara().then(function (si) {
+      if (si === estado.camara) return;
+      estado.camara = si;
+      pintarGrupos();
+    });
   }
 
   // ------------------------------------------------------- columnas de grupos
@@ -1379,6 +1427,7 @@
     habilitarArrastre();
     habilitarHoja();
     window.Scanner.onScan(porCodigo);
+    decidirCamara();
 
     fetch('/api/config')
       .then(function (r) { return r.json(); })
