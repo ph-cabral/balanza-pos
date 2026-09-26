@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0f1419">
 <title>Administración · Balanza POS</title>
 <link rel="stylesheet" href="/css/app.css?v=6">
-<link rel="stylesheet" href="/css/admin.css?v=11">
+<link rel="stylesheet" href="/css/admin.css?v=12">
 </head>
 <body>
 
@@ -15,6 +15,7 @@
   <header class="admin-cab">
     <h1 class="admin-titulo">Administración</h1>
     <span class="admin-version" id="adminVersion"></span>
+    <button type="button" class="btn btn-camara" id="btnEscanearAdmin" hidden>📷 Escanear artículo</button>
     <a class="btn" href="/">← Volver al punto de venta</a>
   </header>
 
@@ -162,7 +163,10 @@
           </div>
           <div class="campo">
             <label for="prodCodigo">Código de barras</label>
-            <input id="prodCodigo" placeholder="opcional" autocomplete="off">
+            <div class="input-con-boton">
+              <input id="prodCodigo" placeholder="opcional" autocomplete="off">
+              <button type="button" class="btn btn-camara-campo" id="btnCamaraCodigo" title="Leer el código con la cámara" aria-label="Leer el código con la cámara" hidden>📷</button>
+            </div>
           </div>
         </div>
 
@@ -458,6 +462,7 @@ Gaseosa 500ml;Coca Cola;Bebidas;unidad;1500;7790895000997"></textarea>
 <div class="avisos" id="avisos"></div>
 
 <script src="/js/scanner.js?v=1"></script>
-<script src="/js/admin.js?v=12"></script>
+<script src="/js/camara.js?v=7"></script>
+<script src="/js/admin.js?v=13"></script>
 </body>
 </html>

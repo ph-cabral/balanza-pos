@@ -18,13 +18,24 @@
 
   // ------------------------------------------------------------- utilidades
 
-  function avisar(texto, tipo) {
+  function avisar(texto, tipo, accion) {
     var d = document.createElement('div');
     d.className = 'aviso ' + (tipo || '');
     d.innerHTML = '<div class="aviso-texto"></div>';
     d.firstChild.textContent = texto;
+    if (accion) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn-primario aviso-accion';
+      b.textContent = accion.texto;
+      b.addEventListener('click', function () {
+        if (d.parentNode) d.parentNode.removeChild(d);
+        accion.fn();
+      });
+      d.firstChild.appendChild(b);
+    }
     $('avisos').appendChild(d);
-    setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 3000);
+    setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, accion ? 8000 : 3000);
   }
 
   function api(url, opciones) {
@@ -766,6 +777,40 @@
   }
 
   if (window.Scanner) window.Scanner.onScan(function (codigo) { alEscanear(codigo, true); });
+
+  // Camara del celular/tablet: el boton de la cabecera hace lo mismo que el
+  // lector (abre la ficha o el alta); el del campo "Código de barras" solo
+  // completa ese campo.
+  function errorCamara(texto, accion) {
+    avisar(texto, accion ? 'atencion' : 'error', accion);
+  }
+
+  function escanearConCamara(soloCampo) {
+    if (!window.Camara) return;
+    window.Camara.abrir({
+      alLeer: function (codigo) {
+        codigo = String(codigo || '').trim();
+        if (!codigo) return;
+        if (soloCampo) {
+          $('prodCodigo').value = codigo;
+          $('prodCodigo').dispatchEvent(new Event('input', { bubbles: true }));
+          avisar('Código ' + codigo + ' cargado', 'ok');
+          return;
+        }
+        abrirPorCodigo(codigo);
+      },
+      alError: errorCamara,
+    });
+  }
+
+  if (window.Camara) {
+    $('btnEscanearAdmin').addEventListener('click', function () { escanearConCamara(false); });
+    $('btnCamaraCodigo').addEventListener('click', function () { escanearConCamara(true); });
+    window.Camara.hayCamara().then(function (si) {
+      $('btnEscanearAdmin').hidden = !si;
+      $('btnCamaraCodigo').hidden = !si;
+    });
+  }
 
   // ------------------------------------------------------------- importar
 
