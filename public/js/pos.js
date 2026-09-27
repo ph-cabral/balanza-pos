@@ -57,7 +57,8 @@
     descTipo: 'porcentaje',
     // venta | picada. La picada tiene su propia lista (no toca el carrito).
     modo: 'venta',
-    picada: { items: [], mermaKg: 0 }, // mermaKg: centavos por kg de picada
+    // mermaKg: centavos por kg de picada; gPersona: gramos por persona.
+    picada: { items: [], mermaKg: 0, gPersona: 0 },
   };
 
   var $ = function (id) { return document.getElementById(id); };
@@ -143,6 +144,10 @@
     picadaPorKg: $('picadaPorKg'),
     picadaTotal: $('picadaTotal'),
     btnPicadaNueva: $('btnPicadaNueva'),
+    gramosPersona: $('gramosPersona'),
+    personaDetalle: $('personaDetalle'),
+    personasTotal: $('personasTotal'),
+    picadaPersonas: $('picadaPersonas'),
   };
 
   // ---------------------------------------------------------------- formato
@@ -1112,6 +1117,25 @@
     try { localStorage.setItem(CLAVE_MERMA, String(v)); } catch (e) {}
   }
 
+  var CLAVE_PERSONA = 'pos.picadaGramosPersona';
+
+  function leerGramosPersona() {
+    try { var v = parseInt(localStorage.getItem(CLAVE_PERSONA), 10); return v > 0 ? v : 0; }
+    catch (e) { return 0; }
+  }
+
+  /** Para cuantas personas alcanza: personas enteras (null si no se configuro). */
+  function personasPicada() {
+    var g = estado.picada.gPersona;
+    return g > 0 ? Math.floor(gramosPicada() / g) : null;
+  }
+
+  function textoPersonas(n) {
+    if (n === null) return '—';
+    if (n === 0) return 'menos de 1 persona';
+    return n === 1 ? '1 persona' : n + ' personas';
+  }
+
   function enPicada() { return estado.modo === 'picada'; }
 
   /** La lista en la que se esta cargando: el carrito o la picada. */
@@ -1148,8 +1172,10 @@
     if (enPicada()) {
       var n = estado.picada.items.length;
       el.carritoTitulo.textContent = 'Simulación de picada';
+      var pers = personasPicada();
       el.carritoContador.textContent = n
-        ? n + (n === 1 ? ' artículo' : ' artículos') + ' · ' + kg(gramosPicada()) + ' kg'
+        ? n + (n === 1 ? ' artículo' : ' artículos') + ' · ' + kg(gramosPicada()) + ' kg' +
+          (pers ? ' · ' + textoPersonas(pers) : '')
         : 'Sin artículos';
       if (el.totalMini) el.totalMini.textContent = plata(totalPicada());
     } else {
@@ -1171,6 +1197,14 @@
     el.mermaDetalle.textContent = !mKg ? 'Lo que se pierde, por kg'
       : (gramos ? 'sobre ' + kg(gramos) + ' kg' : 'por kg de picada');
     el.mermaTotal.textContent = plata(merma);
+
+    // Por persona: para cuantos alcanza y cuanto falta para uno mas.
+    var gP = estado.picada.gPersona;
+    var pers = personasPicada();
+    el.personasTotal.textContent = pers === null ? '—' : textoPersonas(pers);
+    el.picadaPersonas.textContent = textoPersonas(pers);
+    el.personaDetalle.textContent = !gP ? 'Cuánto se calcula por persona'
+      : 'faltan ' + ((pers + 1) * gP - gramos) + ' g para ' + (pers + 1);
 
     el.picadaItems.innerHTML = '';
     if (!items.length) {
@@ -1228,6 +1262,14 @@
         if (estado.vista === 'confirma') volverAGrupos();
       },
     });
+  }
+
+  function cambiarGramosPersona() {
+    var n = Math.round(Number(String(el.gramosPersona.value).replace(',', '.')));
+    estado.picada.gPersona = n > 0 ? n : 0;
+    try { localStorage.setItem(CLAVE_PERSONA, String(estado.picada.gPersona)); } catch (e) {}
+    pintarPicada();
+    if (estado.vista === 'confirma') pintarConfirmacion(null);
   }
 
   function cambiarMerma() {
@@ -1492,6 +1534,15 @@
       fm.children[1].textContent = kg(gramosPicada()) + ' kg × ' + plata(estado.picada.mermaKg) + '/kg';
       fm.children[2].textContent = plata(mermaPicada());
       frag.appendChild(fm);
+    }
+    if (enPicada() && personasPicada() !== null) {
+      var fp = document.createElement('div');
+      fp.className = 'confirma-fila';
+      fp.innerHTML = '<div class="confirma-fila-nombre">Alcanza para</div>' +
+        '<div class="confirma-fila-detalle num"></div><div class="confirma-fila-subtotal num"></div>';
+      fp.children[1].textContent = estado.picada.gPersona + ' g por persona';
+      fp.children[2].textContent = textoPersonas(personasPicada());
+      frag.appendChild(fp);
     }
     el.confirmaLista.appendChild(frag);
 
@@ -1851,6 +1902,9 @@
     estado.picada.mermaKg = leerMerma();
     el.mermaKg.value = estado.picada.mermaKg ? String(estado.picada.mermaKg / 100) : '';
     el.mermaKg.addEventListener('input', cambiarMerma);
+    estado.picada.gPersona = leerGramosPersona();
+    el.gramosPersona.value = estado.picada.gPersona ? String(estado.picada.gPersona) : '';
+    el.gramosPersona.addEventListener('input', cambiarGramosPersona);
     el.accesoPicada.addEventListener('click', function () {
       cambiarModo(enPicada() ? 'venta' : 'picada');
     });

@@ -1079,12 +1079,29 @@ input  { font-family: inherit; font-size: inherit; }
 .modo-picada .barra-tiempo i,
 .modo-picada .hoja-tiempo i { background: var(--picada); }
 
+/* Tabla de picada de fondo: madera dibujada con CSS + una veta SVG generada
+   (sin imagenes externas). El fondo no se mueve con el scroll de la lista. */
 .picada-panel {
   flex: 1;
   overflow-y: auto;
-  padding: 10px 14px;
+  margin: 12px 12px 10px;
+  padding: 40px 14px 14px;
+  border-radius: 26px;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+  background:
+    /* agujero de la manija */
+    radial-gradient(ellipse 34px 11px at 50% 18px, #0c0806 0 88%, rgba(0,0,0,0) 100%) no-repeat,
+    /* brillo suave arriba, sombra abajo */
+    linear-gradient(180deg, rgba(255,230,190,.10), rgba(0,0,0,0) 30%, rgba(0,0,0,.22)),
+    /* veta */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='260'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.0035 0.11' numOctaves='3' seed='11' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.24 0 0 0 0 0.13 0 0 0 0 0.05 0 0 0 1.6 -0.45'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E"),
+    /* color de la madera */
+    linear-gradient(100deg, #8d5a31, #a86f3e 45%, #93603a 70%, #7e4f2b);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 220, 170, .10),
+    inset 0 0 18px rgba(0, 0, 0, .35),
+    0 10px 24px rgba(0, 0, 0, .45);
 }
 .picada-panel[hidden], .picada-pie[hidden] { display: none; }
 
@@ -1096,8 +1113,23 @@ input  { font-family: inherit; font-size: inherit; }
   margin-bottom: 12px;
   border: 1px dashed var(--picada);
   border-radius: var(--radio);
-  background: rgba(185, 139, 227, .08);
+  background: rgba(28, 20, 36, .92);
 }
+.persona-fila { border-color: var(--acento); }
+.persona-fila .item-nombre { color: var(--acento-fuerte); }
+.persona-fila .item-subtotal { color: var(--acento-fuerte); }
+.picada-personas { color: var(--texto); font-weight: 700; font-size: 16px; }
+
+/* Sobre la madera los renglones llevan sombra y el vacio va en un cartel. */
+.picada-panel .item-wrap { box-shadow: 0 3px 8px rgba(0, 0, 0, .35); }
+.picada-vacia {
+  height: auto;
+  margin-top: 24px;
+  border-radius: var(--radio);
+  background: rgba(15, 20, 25, .78);
+  color: var(--texto-medio);
+}
+.picada-vacia .icono { opacity: .8; }
 .merma-fila .item-nombre { color: var(--picada); }
 .merma-input { display: flex; align-items: center; gap: 4px; color: var(--texto-medio); font-size: 14px; }
 .merma-input input {
@@ -1134,5 +1166,10 @@ input  { font-family: inherit; font-size: inherit; }
 
 @media (max-width: 900px) {
   .picada-banner { padding: 8px 16px; font-size: 14px; }
+  .picada-panel { margin: 8px 10px; }
+  .merma-input input { width: 78px; padding: 0 8px; font-size: 16px; }
+  .merma-fila { gap: 8px; padding: 10px 12px; }
+  /* En angosto el rotulo y el detalle bajan de renglon en vez de cortarse. */
+  .merma-fila .item-nombre, .merma-fila .item-detalle { white-space: normal; }
   .picada-pie { padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
 }

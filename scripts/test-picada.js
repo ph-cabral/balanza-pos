@@ -48,6 +48,11 @@ function chequear(desc, cond, detalle) {
   const navegador = await chromium.launch(CHROME ? { executablePath: CHROME } : {});
   const ctx = await navegador.newContext({ viewport: { width: 1280, height: 800 }, hasTouch: true });
   const pagina = await ctx.newPage();
+  // PW_LENTO=6 frena la CPU del navegador (x6) para reproducir la lentitud de CI.
+  if (process.env.PW_LENTO) {
+    const lento = await ctx.newCDPSession(pagina);
+    await lento.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.PW_LENTO) });
+  }
   const errores = [];
   pagina.on('pageerror', (e) => errores.push(e.message));
   pagina.on('console', (m) => { if (m.type() === 'error') errores.push(m.text()); });
@@ -56,10 +61,16 @@ function chequear(desc, cond, detalle) {
   const simular = (gramos) => pagina.evaluate((g) => fetch('/api/balanza/simular', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gramos: g }),
   }), gramos);
-  const esperarEstable = () => pagina.waitForFunction(
-    () => document.querySelector('#pesoNumero').classList.contains('estable'), { timeout: 8000 });
+  // waitForFunction(fn, arg, opciones): sin el arg del medio el timeout no se aplica.
+  // Espera a que la pantalla muestre ESE peso y estable: con solo "estable" se
+  // colaba el peso anterior (en CI, mas lento, se tocaba el producto con la
+  // balanza todavia moviendose y el servidor rechazaba la captura).
+  const esperarPeso = (gramos) => pagina.waitForFunction((t) => {
+    const n = document.querySelector('#pesoNumero');
+    return n.classList.contains('estable') && n.textContent.trim() === t;
+  }, (gramos / 1000).toFixed(3).replace('.', ','), { timeout: 15000 });
   const esperarGrupos = () => pagina.waitForFunction(
-    () => !document.querySelector('#vistaGrupos').hasAttribute('hidden'), { timeout: 10000 });
+    () => !document.querySelector('#vistaGrupos').hasAttribute('hidden'), null, { timeout: 15000 });
   const enPicada = () => pagina.evaluate(() => document.body.classList.contains('modo-picada'));
 
   /** Arrastre con el mouse sobre la parte izquierda (dx < 0: hacia la izquierda). */
@@ -75,17 +86,17 @@ function chequear(desc, cond, detalle) {
   }
 
   async function cargar(grupo, producto, gramos) {
-    await simular(0); await esperar(400);
-    await simular(gramos); await esperarEstable();
+    await simular(0); await esperarPeso(0);
+    await simular(gramos); await esperarPeso(gramos);
     await pagina.locator('.grupo', { hasText: grupo }).first().click();
     await pagina.locator('.prod', { hasText: producto }).first().click();
     await pagina.waitForFunction(() => !document.querySelector('#vistaConfirma').hidden ||
-      document.querySelector('#hoja').classList.contains('abierta'), { timeout: 5000 });
+      document.querySelector('#hoja').classList.contains('abierta'), null, { timeout: 10000 });
   }
 
   try {
     await pagina.goto(URL, { waitUntil: 'networkidle' });
-    await pagina.evaluate(() => { try { localStorage.removeItem('pos.picadaMermaKg'); } catch (e) {} });
+    await pagina.evaluate(() => { try { localStorage.removeItem('pos.picadaMermaKg'); localStorage.removeItem('pos.picadaGramosPersona'); } catch (e) {} });
     await pagina.reload({ waitUntil: 'networkidle' });
     await esperar(500);
 
@@ -123,6 +134,17 @@ function chequear(desc, cond, detalle) {
     chequear('sale por kg: $7.850 / 0,750 kg = $10.467', (await texto('#picadaPorKg')).includes('10.467'), await texto('#picadaPorKg'));
     await pagina.screenshot({ path: path.join(SALIDA, 'picada-1-pc.png') });
 
+    console.log('\n2b. Por persona');
+    chequear('sin configurar no dice personas', (await texto('#picadaPersonas')) === '—');
+    await pagina.locator('#gramosPersona').fill('150');
+    chequear('0,750 kg a 150 g → 5 personas', (await texto('#picadaPersonas')) === '5 personas', await texto('#picadaPersonas'));
+    chequear('la fila dice cuánto falta para una más', (await texto('#personaDetalle')) === 'faltan 150 g para 6', await texto('#personaDetalle'));
+    chequear('la cabecera también', (await texto('#carritoContador')).includes('5 personas'), await texto('#carritoContador'));
+    await pagina.locator('#gramosPersona').fill('200');
+    chequear('a 200 g → 3 personas, faltan 50 g', (await texto('#picadaPersonas')) === '3 personas' &&
+      (await texto('#personaDetalle')) === 'faltan 50 g para 4', await texto('#personaDetalle'));
+    await pagina.locator('#gramosPersona').fill('150');
+
     console.log('\n3. La merma cambia en vivo y se recuerda');
     await pagina.locator('#mermaKg').fill('2000');
     chequear('merma nueva $1.500', (await texto('#mermaTotal')).includes('1.500'), await texto('#mermaTotal'));
@@ -150,6 +172,7 @@ function chequear(desc, cond, detalle) {
     chequear('total $0', (await texto('#picadaTotal')).includes('0,00'));
     await pagina.reload({ waitUntil: 'networkidle' });
     chequear('la merma por kg se recuerda en el equipo', (await pagina.locator('#mermaKg').inputValue()) === '2000');
+    chequear('los gramos por persona también', (await pagina.locator('#gramosPersona').inputValue()) === '150');
 
     console.log('\n7. Celular');
     for (const [w, h] of [[360, 740], [820, 1180]]) {
@@ -200,6 +223,17 @@ function chequear(desc, cond, detalle) {
   } catch (e) {
     fallos++;
     console.log('Error en la prueba de picada:', e.message);
+    // Para entender una falla en CI: que decia la pantalla en ese momento.
+    try {
+      const d = await pagina.evaluate(() => ({
+        vista: ['vistaGrupos', 'vistaProductos', 'vistaConfirma'].filter((id) => !document.getElementById(id).hidden).join(','),
+        peso: document.querySelector('#pesoNumero').className + ' ' + document.querySelector('#pesoNumero').textContent,
+        avisos: document.querySelector('#avisos').innerText.replace(/\s+/g, ' '),
+        picada: document.querySelectorAll('#picadaItems .item-wrap').length,
+      }));
+      console.log('  Pantalla:', JSON.stringify(d));
+      await pagina.screenshot({ path: path.join(SALIDA, 'picada-error.png') });
+    } catch (_) { /* la pagina puede no estar */ }
   }
   await navegador.close();
   console.log(fallos ? `\n  ${fallos} verificacion(es) fallaron.` : '\n  Todo bien.');
