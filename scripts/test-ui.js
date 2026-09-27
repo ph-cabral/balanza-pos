@@ -63,7 +63,10 @@ function chequear(desc, cond, detalle) {
 
   const errores = [];
   pagina.on('pageerror', (e) => errores.push(e.message));
-  pagina.on('console', (m) => { if (m.type() === 'error') errores.push(m.text()); });
+  // El 404 de un codigo inexistente es esperado (paso 9): no cuenta como error.
+  pagina.on('console', (m) => {
+    if (m.type() === 'error' && !/api\/productos\/codigo\//.test((m.location() || {}).url || '')) errores.push(m.text());
+  });
 
   /** Espera a que la pantalla vuelva sola a los grupos. */
   const esperarGrupos = () => pagina.waitForFunction(
