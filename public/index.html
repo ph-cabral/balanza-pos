@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0f1419">
 <title>Balanza POS</title>
-<link rel="stylesheet" href="/css/app.css?v=9">
+<link rel="stylesheet" href="/css/app.css?v=10">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
 </head>
 <body>
@@ -33,6 +33,18 @@
 
       <!-- Accesos: ventas (Administración → Ventas) y administración -->
       <nav class="accesos" aria-label="Accesos">
+        <button type="button" class="acceso acceso-picada" id="accesoPicada"
+                title="Simular una picada: cuánto de cada fiambre y cuánto sale (también deslizando a la izquierda)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="9" width="17" height="10" rx="2"/>
+            <path d="M19 13h3"/>
+            <circle cx="7" cy="14" r="1.5"/>
+            <circle cx="12" cy="13" r="1.5"/>
+            <path d="M14 16h2"/>
+          </svg>
+          <span id="accesoPicadaTexto">Picada</span>
+        </button>
         <a class="acceso" id="accesoVentas" href="/admin.html#ventas"
            title="Ventas de hoy, totales por día y por mes, gastos">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -59,6 +71,12 @@
     <!-- Buscador oculto: solo lo usa el codigo (filtro por texto). -->
     <div class="barra-busqueda" hidden>
       <input class="buscador" id="buscador" type="search" autocomplete="off" tabindex="-1">
+    </div>
+
+    <!-- Modo simulacion de picada: se entra deslizando de derecha a izquierda -->
+    <div class="picada-banner" id="picadaBanner" hidden>
+      <span>Simulación de picada · no es una venta</span>
+      <button type="button" class="btn chico" id="btnSalirPicada">Volver a la venta ›</button>
     </div>
 
     <main class="escenario">
@@ -109,7 +127,7 @@
 
         <div class="confirma-pie">
           <div class="confirma-total">
-            <span>Total de la venta</span>
+            <span id="confirmaTotalRotulo">Total de la venta</span>
             <span class="num" id="confirmaTotal">$ 0,00</span>
           </div>
           <button class="btn-seguir" id="btnSeguir">Seguir</button>
@@ -132,7 +150,7 @@
 
     <div class="carrito-cab" id="carritoCab">
       <div>
-        <div class="carrito-titulo">Venta actual</div>
+        <div class="carrito-titulo" id="carritoTitulo">Venta actual</div>
         <div class="carrito-contador" id="carritoContador">Sin artículos</div>
       </div>
       <span class="total-mini num" id="totalMini">$ 0,00</span>
@@ -145,7 +163,7 @@
       </div>
     </div>
 
-    <div class="carrito-pie">
+    <div class="carrito-pie" id="ventaPie">
       <div class="descuento-fila">
         <button type="button" class="btn-descuento" id="btnDescuento">
           <span class="desc-ico">%</span><span id="btnDescuentoTexto">Descuento</span>
@@ -169,6 +187,35 @@
         </svg>
         <span id="btnCobrarTexto">Cerrar venta</span>
       </button>
+    </div>
+
+    <!-- Simulacion de picada: la merma primero, despues cada fiambre -->
+    <div class="picada-panel" id="picadaPanel" hidden>
+      <div class="merma-fila">
+        <div class="item-info">
+          <div class="item-nombre">Merma</div>
+          <div class="item-detalle num" id="mermaDetalle">Lo que se pierde, por kg</div>
+        </div>
+        <label class="merma-input">
+          <span>$</span>
+          <input id="mermaKg" type="number" inputmode="decimal" min="0" step="any" placeholder="0" aria-label="Merma en pesos por kg">
+          <span>/kg</span>
+        </label>
+        <div class="item-subtotal num" id="mermaTotal">$ 0,00</div>
+      </div>
+      <div id="picadaItems"></div>
+    </div>
+
+    <div class="carrito-pie picada-pie" id="picadaPie" hidden>
+      <div class="picada-resumen"><span>Fiambre</span><span class="num" id="picadaFiambre">$ 0,00</span></div>
+      <div class="picada-resumen"><span>Merma</span><span class="num" id="picadaMerma">$ 0,00</span></div>
+      <div class="picada-resumen"><span>Peso total</span><span class="num" id="picadaKg">0,000 kg</span></div>
+      <div class="picada-resumen"><span>Sale por kg</span><span class="num" id="picadaPorKg">—</span></div>
+      <div class="total-fila">
+        <span class="total-label">TOTAL PICADA</span>
+        <span class="total-valor num" id="picadaTotal">$ 0,00</span>
+      </div>
+      <button class="btn-cobrar btn-picada-nueva" id="btnPicadaNueva" disabled>Nueva picada</button>
     </div>
   </aside>
 </div>
@@ -212,6 +259,6 @@
 
 <script src="/js/scanner.js?v=7"></script>
 <script src="/js/camara.js?v=7"></script>
-<script src="/js/pos.js?v=9"></script>
+<script src="/js/pos.js?v=10"></script>
 </body>
 </html>

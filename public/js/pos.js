@@ -11,6 +11,12 @@
  *
  * Los grupos se acomodan arrastrandolos: manteniendo apretado uno se entra al
  * modo "ordenar" y el orden nuevo se guarda en el servidor.
+ *
+ * Simulacion de picada: deslizando de derecha a izquierda (o con el boton
+ * "Picada") la misma pantalla arma una picada en vez de una venta. Muestra
+ * cuanto de cada fiambre y cuanto sale, mas una merma en $ por kg que se cobra
+ * segun el peso total. No se guarda en el servidor; la venta abierta queda
+ * intacta y se vuelve a ella deslizando al reves.
  */
 (function () {
   'use strict';
@@ -49,6 +55,9 @@
     descuentos: [],
     descuento: null,
     descTipo: 'porcentaje',
+    // venta | picada. La picada tiene su propia lista (no toca el carrito).
+    modo: 'venta',
+    picada: { items: [], mermaKg: 0 }, // mermaKg: centavos por kg de picada
   };
 
   var $ = function (id) { return document.getElementById(id); };
@@ -114,6 +123,26 @@
     descTipo: $('descTipo'),
     btnSinDescuento: $('btnSinDescuento'),
     descuentosCerrar: $('descuentosCerrar'),
+
+    carritoTitulo: $('carritoTitulo'),
+    ventaPie: $('ventaPie'),
+    confirmaTotalRotulo: $('confirmaTotalRotulo'),
+    accesoPicada: $('accesoPicada'),
+    accesoPicadaTexto: $('accesoPicadaTexto'),
+    picadaBanner: $('picadaBanner'),
+    btnSalirPicada: $('btnSalirPicada'),
+    picadaPanel: $('picadaPanel'),
+    picadaItems: $('picadaItems'),
+    picadaPie: $('picadaPie'),
+    mermaKg: $('mermaKg'),
+    mermaDetalle: $('mermaDetalle'),
+    mermaTotal: $('mermaTotal'),
+    picadaFiambre: $('picadaFiambre'),
+    picadaMerma: $('picadaMerma'),
+    picadaKg: $('picadaKg'),
+    picadaPorKg: $('picadaPorKg'),
+    picadaTotal: $('picadaTotal'),
+    btnPicadaNueva: $('btnPicadaNueva'),
   };
 
   // ---------------------------------------------------------------- formato
@@ -271,7 +300,7 @@
 
   function recargarSiLibre() {
     if (!estado.versionNueva) return;
-    var libre = !estado.carrito.length && !estado.cerrando && Date.now() - ultimoToque > 20000;
+    var libre = !estado.carrito.length && !estado.picada.items.length && !estado.cerrando && Date.now() - ultimoToque > 20000;
     if (libre) { location.reload(); return; }
     clearTimeout(estado.relojVersion);
     estado.relojVersion = setTimeout(recargarSiLibre, 10000);
@@ -818,11 +847,12 @@
   }
 
   function agregarUnidad(p) {
+    var destino = lista();
     // Si ya esta en el carrito, sumamos una unidad en vez de duplicar la linea.
     var existente = null;
-    for (var i = 0; i < estado.carrito.length; i++) {
-      if (estado.carrito[i].producto_id === p.id && estado.carrito[i].tipo === 'unidad') {
-        existente = estado.carrito[i];
+    for (var i = 0; i < destino.length; i++) {
+      if (destino[i].producto_id === p.id && destino[i].tipo === 'unidad') {
+        existente = destino[i];
         break;
       }
     }
@@ -837,13 +867,15 @@
         cantidad: 1,
         precio_centavos: p.precio_centavos,
       };
-      estado.carrito.push(existente);
+      destino.push(existente);
     }
-    pintarCarrito();
+    pintarDe(destino);
     mostrarConfirmacion(existente);
   }
 
   function agregarPorPeso(p) {
+    // Venta o picada: se decide al tocar, no cuando contesta la balanza.
+    var modo = estado.modo;
     // El servidor valida estabilidad y peso minimo: no confiamos en la pantalla.
     fetch('/api/balanza/capturar' + qEstacion(), { method: 'POST' })
       .then(function (r) { return r.json(); })
@@ -874,11 +906,12 @@
           cantidad: gramos,
           precio_centavos: p.precio_centavos,
         };
-        estado.carrito.push(item);
+        var destino = modo === 'picada' ? estado.picada.items : estado.carrito;
+        destino.push(item);
         estado.ultimoPesoCapturado = gramos;
         estado.pasoPorCero = false;
-        pintarCarrito();
-        mostrarConfirmacion(item);
+        pintarDe(destino);
+        if (modo === estado.modo) mostrarConfirmacion(item);
 
         if (sospecha) {
           // Con una duda sobre el peso no corresponde volver sola a los grupos:
@@ -892,7 +925,7 @@
               fn: function () {
                 item.cantidad = Math.max(1, gramos - anterior);
                 estado.ultimoPesoCapturado = item.cantidad;
-                pintarCarrito();
+                pintarDe(destino);
                 if (estado.vista === 'confirma') pintarConfirmacion(item);
               },
             }
@@ -902,24 +935,35 @@
       .catch(function (e) { avisar('Error al leer la balanza: ' + e.message, 'error'); });
   }
 
+  function esDePicada(uid) {
+    return estado.picada.items.some(function (i) { return i.uid === uid; });
+  }
+
   function quitarItem(uid) {
-    estado.carrito = estado.carrito.filter(function (i) { return i.uid !== uid; });
-    pintarCarrito();
+    var fuera = function (i) { return i.uid !== uid; };
+    if (esDePicada(uid)) {
+      estado.picada.items = estado.picada.items.filter(fuera);
+      pintarPicada();
+    } else {
+      estado.carrito = estado.carrito.filter(fuera);
+      pintarCarrito();
+    }
     if (estado.vista === 'confirma') {
-      if (!estado.carrito.length) volverAGrupos();
+      if (!lista().length) volverAGrupos();
       else pintarConfirmacion(null);
     }
   }
 
   function cambiarCantidad(uid, delta) {
-    for (var i = 0; i < estado.carrito.length; i++) {
-      if (estado.carrito[i].uid === uid) {
-        estado.carrito[i].cantidad += delta;
-        if (estado.carrito[i].cantidad <= 0) return quitarItem(uid);
+    var l = esDePicada(uid) ? estado.picada.items : estado.carrito;
+    for (var i = 0; i < l.length; i++) {
+      if (l[i].uid === uid) {
+        l[i].cantidad += delta;
+        if (l[i].cantidad <= 0) return quitarItem(uid);
         break;
       }
     }
-    pintarCarrito();
+    pintarDe(l);
     if (estado.vista === 'confirma') pintarConfirmacion(null);
   }
 
@@ -970,19 +1014,27 @@
       el.carritoLista.innerHTML =
         '<div class="carrito-vacio"><div class="icono">🧺</div>' +
         '<div>Poné algo en la balanza<br>y elegí el producto</div></div>';
-      el.carritoContador.textContent = 'Sin artículos';
       el.total.textContent = plata(0);
-      if (el.totalMini) el.totalMini.textContent = plata(0);
       el.btnCobrar.disabled = true;
       estado.ultimoPesoCapturado = 0;
       estado.descuento = null;
       pintarDescuento();
+      pintarCabecera();
       return;
     }
 
     var frag = document.createDocumentFragment();
+    carrito.forEach(function (item) { frag.appendChild(nodoItem(item)); });
+    el.carritoLista.appendChild(frag);
 
-    carrito.forEach(function (item) {
+    pintarDescuento();
+    el.total.textContent = plata(totalCarrito());
+    pintarCabecera();
+    el.btnCobrar.disabled = estado.cerrando;
+  }
+
+  /** Renglon del carrito o de la picada. detalle: reemplaza al de siempre. */
+  function nodoItem(item, detalle) {
       var wrap = document.createElement('div');
       wrap.className = 'item-wrap';
       wrap.dataset.uid = item.uid;
@@ -1007,7 +1059,7 @@
       // es la marca y no la cantidad, que es el dato que hay que poder leer.
       var det = document.createElement('div');
       det.className = 'item-detalle num';
-      det.textContent = detalleDe(item) + (item.marca ? ' · ' + item.marca : '');
+      det.textContent = (detalle || detalleDe(item)) + (item.marca ? ' · ' + item.marca : '');
       info.appendChild(det);
 
       nodo.appendChild(info);
@@ -1044,17 +1096,192 @@
       habilitarSwipe(nodo, function () { quitarItem(item.uid); });
 
       wrap.appendChild(nodo);
-      frag.appendChild(wrap);
+      return wrap;
+  }
+
+  // ------------------------------------------------------ simulacion de picada
+
+  var CLAVE_MERMA = 'pos.picadaMermaKg';
+
+  function leerMerma() {
+    try { var v = parseInt(localStorage.getItem(CLAVE_MERMA), 10); return v > 0 ? v : 0; }
+    catch (e) { return 0; }
+  }
+
+  function guardarMerma(v) {
+    try { localStorage.setItem(CLAVE_MERMA, String(v)); } catch (e) {}
+  }
+
+  function enPicada() { return estado.modo === 'picada'; }
+
+  /** La lista en la que se esta cargando: el carrito o la picada. */
+  function lista() { return enPicada() ? estado.picada.items : estado.carrito; }
+
+  function pintarDe(destino) {
+    if (destino === estado.carrito) pintarCarrito(); else pintarPicada();
+  }
+
+  function gramosPicada() {
+    return estado.picada.items.reduce(function (a, i) {
+      return a + (i.tipo === 'peso' ? i.cantidad : 0);
+    }, 0);
+  }
+
+  function fiambrePicada() {
+    return estado.picada.items.reduce(function (a, i) { return a + subtotalDe(i); }, 0);
+  }
+
+  /** Merma: $ por kg × kg de la picada, en pesos enteros. */
+  function mermaPicada() {
+    return Math.round((estado.picada.mermaKg * gramosPicada()) / 100000) * 100;
+  }
+
+  function totalPicada() { return fiambrePicada() + mermaPicada(); }
+
+  function totalActivo() { return enPicada() ? totalPicada() : totalCarrito(); }
+
+  function porcentaje(parte, todo) {
+    return todo ? Math.round((parte * 100) / todo) + '%' : '';
+  }
+
+  function pintarCabecera() {
+    if (enPicada()) {
+      var n = estado.picada.items.length;
+      el.carritoTitulo.textContent = 'Simulación de picada';
+      el.carritoContador.textContent = n
+        ? n + (n === 1 ? ' artículo' : ' artículos') + ' · ' + kg(gramosPicada()) + ' kg'
+        : 'Sin artículos';
+      if (el.totalMini) el.totalMini.textContent = plata(totalPicada());
+    } else {
+      var c = estado.carrito.length;
+      el.carritoTitulo.textContent = 'Venta actual';
+      el.carritoContador.textContent = c ? c + (c === 1 ? ' artículo' : ' artículos') : 'Sin artículos';
+      if (el.totalMini) el.totalMini.textContent = plata(totalCarrito());
+    }
+  }
+
+  function pintarPicada() {
+    var items = estado.picada.items;
+    var gramos = gramosPicada();
+    var merma = mermaPicada();
+    var fiambre = fiambrePicada();
+    var total = fiambre + merma;
+    var mKg = estado.picada.mermaKg;
+
+    el.mermaDetalle.textContent = !mKg ? 'Lo que se pierde, por kg'
+      : (gramos ? 'sobre ' + kg(gramos) + ' kg' : 'por kg de picada');
+    el.mermaTotal.textContent = plata(merma);
+
+    el.picadaItems.innerHTML = '';
+    if (!items.length) {
+      el.picadaItems.innerHTML =
+        '<div class="picada-vacia"><div class="icono">🧀</div>' +
+        '<div>Poné cada fiambre en la balanza<br>y elegí el producto</div></div>';
+    } else {
+      var frag = document.createDocumentFragment();
+      items.forEach(function (i) {
+        // Primero lo que importa en la picada: cuanto va y que parte es.
+        frag.appendChild(nodoItem(i, i.tipo === 'peso'
+          ? kg(i.cantidad) + ' kg · ' + porcentaje(i.cantidad, gramos) + ' · ' + plata(i.precio_centavos) + '/kg'
+          : null));
+      });
+      el.picadaItems.appendChild(frag);
+    }
+
+    el.picadaFiambre.textContent = plata(fiambre);
+    el.picadaMerma.textContent = plata(merma);
+    el.picadaKg.textContent = kg(gramos) + ' kg';
+    el.picadaPorKg.textContent = gramos ? plata(Math.round((total * 1000) / gramos / 100) * 100) + ' /kg' : '—';
+    el.picadaTotal.textContent = plata(total);
+    el.btnPicadaNueva.disabled = !items.length;
+    if (enPicada()) pintarCabecera();
+  }
+
+  function cambiarModo(modo) {
+    if (modo === estado.modo || estado.cerrando) return;
+    estado.modo = modo;
+    var p = modo === 'picada';
+    document.body.classList.toggle('modo-picada', p);
+    el.picadaBanner.hidden = !p;
+    el.carritoLista.hidden = p;
+    el.ventaPie.hidden = p;
+    el.picadaPanel.hidden = !p;
+    el.picadaPie.hidden = !p;
+    el.accesoPicada.classList.toggle('activo', p);
+    el.accesoPicadaTexto.textContent = p ? 'Venta' : 'Picada';
+    el.accesoPicada.title = p ? 'Volver a la venta (también deslizando a la derecha)'
+      : 'Simular una picada: cuánto de cada fiambre y cuánto sale (también deslizando a la izquierda)';
+    volverAGrupos();
+    cerrarHoja();
+    pintarCabecera();
+    if (p) pintarPicada();
+    medirAsomo();
+  }
+
+  function nuevaPicada() {
+    if (!estado.picada.items.length) return;
+    avisar('¿Borrar la picada y empezar otra?', 'atencion', {
+      texto: 'Borrar',
+      fn: function () {
+        estado.picada.items = [];
+        pintarPicada();
+        if (estado.vista === 'confirma') volverAGrupos();
+      },
+    });
+  }
+
+  function cambiarMerma() {
+    var n = Number(String(el.mermaKg.value).replace(',', '.'));
+    estado.picada.mermaKg = n > 0 ? Math.round(n * 100) : 0;
+    guardarMerma(estado.picada.mermaKg);
+    pintarPicada();
+    if (estado.vista === 'confirma') pintarConfirmacion(null);
+  }
+
+  /**
+   * Deslizar sobre la parte izquierda: de derecha a izquierda entra a la
+   * picada, de izquierda a derecha vuelve a la venta. Solo cuenta un gesto
+   * claramente horizontal; el vertical sigue siendo scroll de los grupos.
+   */
+  function habilitarGestoPicada() {
+    var zona = document.querySelector('.izquierda');
+    if (!zona) return;
+    var activo = false, id = null, x0 = 0, y0 = 0, cortarClick = false;
+
+    zona.addEventListener('pointerdown', function (e) {
+      if (estado.ordenando || e.button > 0) return;
+      if (e.target.closest('input, #columnas')) return;
+      activo = true;
+      id = e.pointerId;
+      x0 = e.clientX;
+      y0 = e.clientY;
     });
 
-    el.carritoLista.appendChild(frag);
+    zona.addEventListener('pointermove', function (e) {
+      if (!activo || e.pointerId !== id) return;
+      var dx = e.clientX - x0, dy = e.clientY - y0;
+      if (Math.abs(dy) > 40 && Math.abs(dy) > Math.abs(dx)) activo = false; // es scroll
+    });
 
-    el.carritoContador.textContent =
-      carrito.length + (carrito.length === 1 ? ' artículo' : ' artículos');
-    pintarDescuento();
-    el.total.textContent = plata(totalCarrito());
-    if (el.totalMini) el.totalMini.textContent = el.total.textContent;
-    el.btnCobrar.disabled = estado.cerrando;
+    zona.addEventListener('pointerup', function (e) {
+      if (!activo || e.pointerId !== id) return;
+      activo = false;
+      var dx = e.clientX - x0, dy = e.clientY - y0;
+      if (Math.abs(dx) < 90 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      // El dedo se levanto sobre un grupo o producto: ese toque no lo abre.
+      cortarClick = true;
+      setTimeout(function () { cortarClick = false; }, 350);
+      cambiarModo(dx < 0 ? 'picada' : 'venta');
+    });
+
+    zona.addEventListener('pointercancel', function () { activo = false; });
+
+    zona.addEventListener('click', function (e) {
+      if (!cortarClick) return;
+      cortarClick = false;
+      e.preventDefault();
+      e.stopPropagation();
+    }, true);
   }
 
   // ------------------------------------------------------------- descuentos
@@ -1210,8 +1437,9 @@
 
     // Si el articulo se borro del carrito mientras estaba en pantalla, deja de
     // encabezar la vista.
+    var items = lista();
     var actual = estado.itemConfirmado;
-    if (actual && estado.carrito.indexOf(actual) === -1) actual = estado.itemConfirmado = null;
+    if (actual && items.indexOf(actual) === -1) actual = estado.itemConfirmado = null;
 
     el.confirmaNuevo.hidden = !actual;
     if (actual) {
@@ -1225,11 +1453,11 @@
 
     // El articulo recien cargado ya se muestra arriba en grande: abajo va el
     // resto de la venta, para no repetir el mismo renglon dos veces.
-    var resto = estado.carrito.filter(function (i) { return !actual || i.uid !== actual.uid; });
+    var resto = items.filter(function (i) { return !actual || i.uid !== actual.uid; });
     if (resto.length) {
       var titulo = document.createElement('div');
       titulo.className = 'confirma-titulo';
-      titulo.textContent = 'Resto de la venta';
+      titulo.textContent = enPicada() ? 'Resto de la picada' : 'Resto de la venta';
       frag.appendChild(titulo);
     }
 
@@ -1254,9 +1482,21 @@
       fila.appendChild(sub);
       frag.appendChild(fila);
     });
+
+    // En la picada, la merma va al final (se cobra por el peso total).
+    if (enPicada() && estado.picada.mermaKg) {
+      var fm = document.createElement('div');
+      fm.className = 'confirma-fila';
+      fm.innerHTML = '<div class="confirma-fila-nombre">Merma</div>' +
+        '<div class="confirma-fila-detalle num"></div><div class="confirma-fila-subtotal num"></div>';
+      fm.children[1].textContent = kg(gramosPicada()) + ' kg × ' + plata(estado.picada.mermaKg) + '/kg';
+      fm.children[2].textContent = plata(mermaPicada());
+      frag.appendChild(fm);
+    }
     el.confirmaLista.appendChild(frag);
 
-    el.confirmaTotal.textContent = plata(totalCarrito());
+    el.confirmaTotalRotulo.textContent = enPicada() ? 'Total de la picada' : 'Total de la venta';
+    el.confirmaTotal.textContent = plata(totalActivo());
   }
 
   function segundosDeEspera() {
@@ -1339,7 +1579,7 @@
     if (estado.vista !== 'grupos' || estado.filtro) volverAGrupos();
     abrirHoja();
 
-    var nodo = item && el.carritoLista.querySelector('.item-wrap[data-uid="' + item.uid + '"]');
+    var nodo = item && (enPicada() ? el.picadaItems : el.carritoLista).querySelector('.item-wrap[data-uid="' + item.uid + '"]');
     if (nodo) {
       nodo.classList.add('nuevo');
       if (nodo.scrollIntoView) nodo.scrollIntoView({ block: 'nearest' });
@@ -1523,7 +1763,8 @@
   function init() {
     // Red de seguridad por si el navegador se quedo con un index.html viejo en
     // cache: mejor un mensaje claro que un error de JavaScript a mitad de camino.
-    if (!el.grupos || !el.vistaConfirma || !el.btnSeguir || !el.selectorEstacion || !el.modalDescuentos) {
+    if (!el.grupos || !el.vistaConfirma || !el.btnSeguir || !el.selectorEstacion || !el.modalDescuentos ||
+        !el.picadaPanel || !el.accesoPicada) {
       avisar('La pantalla quedó vieja en la memoria del navegador.', 'error', {
         texto: 'Recargar',
         // Con un recargado normal el navegador puede volver a servir lo mismo de
@@ -1588,7 +1829,7 @@
 
     // Accesos a Ventas y Administrar. El carrito vive solo en esta pantalla:
     // con una venta a medio cargar no se sale sin avisar.
-    document.querySelectorAll('.acceso').forEach(function (a) {
+    document.querySelectorAll('a.acceso').forEach(function (a) {
       a.addEventListener('click', function (e) {
         var n = estado.carrito.length;
         if (!n && !estado.cerrando) return;
@@ -1604,6 +1845,18 @@
 
     habilitarArrastre();
     habilitarHoja();
+    habilitarGestoPicada();
+
+    // Simulacion de picada
+    estado.picada.mermaKg = leerMerma();
+    el.mermaKg.value = estado.picada.mermaKg ? String(estado.picada.mermaKg / 100) : '';
+    el.mermaKg.addEventListener('input', cambiarMerma);
+    el.accesoPicada.addEventListener('click', function () {
+      cambiarModo(enPicada() ? 'venta' : 'picada');
+    });
+    el.btnSalirPicada.addEventListener('click', function () { cambiarModo('venta'); });
+    el.btnPicadaNueva.addEventListener('click', nuevaPicada);
+    pintarPicada();
     window.Scanner.onScan(porCodigo);
     decidirCamara();
 

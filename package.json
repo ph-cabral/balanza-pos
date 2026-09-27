@@ -14,6 +14,7 @@
     "test-humo": "node scripts/test-humo.js",
     "test-grupos": "node scripts/test-grupos.js",
     "test-ui": "node scripts/test-ui.js",
+    "test-picada": "node scripts/test-picada.js",
     "empaquetar": "node scripts/empaquetar.js",
     "test-estaciones": "node scripts/test-estaciones.js",
     "test-deploy": "node scripts/test-deploy.js",

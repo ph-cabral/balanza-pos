@@ -18,6 +18,7 @@
   --aviso: #d99a2b;
   --error: #d9534f;
   --info: #4a90d9;
+  --picada: #b98be3;
 
   --radio: 12px;
   --radio-chico: 8px;
@@ -485,7 +486,7 @@ input  { font-family: inherit; font-size: inherit; }
   -webkit-overflow-scrolling: touch;
 }
 
-.carrito-vacio {
+.carrito-vacio, .picada-vacia {
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -496,7 +497,7 @@ input  { font-family: inherit; font-size: inherit; }
   text-align: center;
   padding: 24px;
 }
-.carrito-vacio .icono { font-size: 40px; opacity: .45; }
+.carrito-vacio .icono, .picada-vacia .icono { font-size: 40px; opacity: .45; }
 
 /* Contenedor del swipe: la capa roja queda debajo del item. */
 .item-wrap {
@@ -1048,4 +1049,90 @@ input  { font-family: inherit; font-size: inherit; }
   .aviso { flex-wrap: wrap; }
   .aviso-texto { flex-basis: 100%; }
   .aviso-accion { margin-left: auto; }
+}
+
+/* ---------- Simulacion de picada ---------- */
+
+/* Deslizar de derecha a izquierda entra al modo picada (y al reves sale): el
+   gesto horizontal lo toma la pagina, el vertical sigue siendo scroll. Va en
+   cada contenedor con scroll: el navegador no mira mas arriba de ellos. */
+.izquierda, .grupos, .grilla, .confirma-lista { touch-action: pan-y; }
+
+.acceso.activo { border-color: var(--picada); color: var(--picada); }
+
+.picada-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 20px;
+  background: rgba(185, 139, 227, .12);
+  border-top: 1px solid rgba(185, 139, 227, .35);
+  border-bottom: 1px solid rgba(185, 139, 227, .35);
+  color: var(--picada);
+  font-size: 15px;
+  font-weight: 600;
+}
+.picada-banner[hidden] { display: none; }
+.picada-banner span { flex: 1; min-width: 0; }
+
+.modo-picada .carrito-titulo { color: var(--picada); }
+.modo-picada .barra-tiempo i,
+.modo-picada .hoja-tiempo i { background: var(--picada); }
+
+.picada-panel {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 14px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.picada-panel[hidden], .picada-pie[hidden] { display: none; }
+
+.merma-fila {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border: 1px dashed var(--picada);
+  border-radius: var(--radio);
+  background: rgba(185, 139, 227, .08);
+}
+.merma-fila .item-nombre { color: var(--picada); }
+.merma-input { display: flex; align-items: center; gap: 4px; color: var(--texto-medio); font-size: 14px; }
+.merma-input input {
+  width: 90px;
+  height: 42px;
+  padding: 0 10px;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-chico);
+  color: var(--texto);
+  text-align: right;
+  font-size: 17px;
+  font-weight: 600;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.merma-input input:focus { outline: none; border-color: var(--picada); }
+
+.picada-resumen {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  color: var(--texto-medio);
+  margin-bottom: 6px;
+}
+.picada-pie .total-fila { margin-top: 10px; }
+.btn-picada-nueva { background: var(--picada); color: #1a0f22; }
+
+/* En celular no entra un tercer boton al lado del peso: se entra deslizando
+   y se sale con el boton de la franja violeta. */
+@media (max-width: 600px) {
+  .acceso-picada { display: none; }
+}
+
+@media (max-width: 900px) {
+  .picada-banner { padding: 8px 16px; font-size: 14px; }
+  .picada-pie { padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
 }
