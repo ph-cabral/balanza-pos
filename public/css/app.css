@@ -942,14 +942,24 @@ input  { font-family: inherit; font-size: inherit; }
   .peso-numero { font-size: 44px; letter-spacing: -1.5px; }
   .peso-unidad { font-size: 20px; }
 
+  /* Tres accesos (Ventas, Ordenar, Administrar) no entran con rotulo al lado
+     del numero: en celular quedan solo con icono (el title explica cada uno). */
+  .accesos { gap: 4px; }
+  .acceso { position: relative; }
   .acceso {
-    gap: 3px;
-    min-width: 56px;
-    height: 56px;
-    padding: 0 7px;
-    font-size: 11px;
+    min-width: 46px;
+    width: 46px;
+    height: 52px;
+    padding: 0;
   }
-  .acceso svg { width: 22px; height: 22px; }
+  .acceso span {
+    position: absolute;
+    width: 1px; height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .acceso svg { width: 24px; height: 24px; }
 }
 
 @keyframes destacar {
