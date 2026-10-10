@@ -26,6 +26,8 @@
   var MS_ENTRE_INTENTOS = 90;     // no hace falta analizar los 30 cuadros por segundo
   var MS_AYUDA = 9000;            // si no lee en este tiempo, mostramos consejos
 
+  var CLAVE_CAMARA = 'pos.camaraId'; // camara elegida en este equipo (localStorage)
+
   var detectorPromesa = null;     // se crea una sola vez
   var sesion = null;              // camara abierta ahora
 
@@ -54,6 +56,34 @@
     return navigator.mediaDevices.enumerateDevices()
       .then(function (ds) { return ds.some(function (d) { return d.kind === 'videoinput'; }); })
       .catch(function () { return true; });
+  }
+
+  function camaraGuardada() {
+    try { return localStorage.getItem(CLAVE_CAMARA) || ''; } catch (e) { return ''; }
+  }
+
+  function guardarCamara(id) {
+    try { localStorage.setItem(CLAVE_CAMARA, id || ''); } catch (e) { /* sin storage: no se recuerda */ }
+  }
+
+  // Muchos celulares tienen varias camaras traseras (principal, gran angular,
+  // zoom) y el navegador elige una sola: a veces la gran angular, que enfoca
+  // mal de cerca. Se puede pedir una por id.
+  function pedirCamara(deviceId) {
+    var video = { width: { ideal: 1920 }, height: { ideal: 1080 } };
+    if (deviceId) video.deviceId = { exact: deviceId };
+    else video.facingMode = { ideal: 'environment' };
+    return navigator.mediaDevices.getUserMedia({ video: video, audio: false });
+  }
+
+  // Camaras que no son la frontal (los nombres solo estan disponibles con permiso).
+  function listarTraseras() {
+    if (!navigator.mediaDevices.enumerateDevices) return Promise.resolve([]);
+    return navigator.mediaDevices.enumerateDevices().then(function (ds) {
+      var todas = ds.filter(function (d) { return d.kind === 'videoinput' && d.deviceId; });
+      var traseras = todas.filter(function (d) { return !/front|frontal|user|selfie|delantera/i.test(d.label || ''); });
+      return traseras.length ? traseras : todas;
+    }).catch(function () { return []; });
   }
 
   function urlSegura() {
@@ -114,6 +144,7 @@
   // ------------------------------------------------------------ pantalla
 
   var ICONO_CERRAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+  var ICONO_CAMBIAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/></svg>';
   var ICONO_LINTERNA = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6c0 2-2 2-2 4v10a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V10c0-2-2-2-2-4V2h12z"/><path d="M6 6h12"/><path d="M12 12v2"/></svg>';
 
   function armarPantalla() {
@@ -126,6 +157,7 @@
       '<div class="camara-velo"><div class="camara-marco"><i class="camara-laser"></i></div></div>' +
       '<div class="camara-arriba">' +
       '  <span class="camara-titulo">Escanear código</span>' +
+      '  <button type="button" class="camara-btn camara-cambiar" hidden aria-label="Cambiar de cámara" title="Cambiar de cámara">' + ICONO_CAMBIAR + '</button>' +
       '  <button type="button" class="camara-btn camara-linterna" hidden aria-label="Linterna">' + ICONO_LINTERNA + '</button>' +
       '  <button type="button" class="camara-btn camara-cerrar" aria-label="Cerrar">' + ICONO_CERRAR + '</button>' +
       '</div>' +
@@ -143,6 +175,7 @@
       ayuda: raiz.querySelector('.camara-ayuda'),
       cerrar: raiz.querySelector('.camara-cerrar'),
       linterna: raiz.querySelector('.camara-linterna'),
+      cambiar: raiz.querySelector('.camara-cambiar'),
     };
   }
 
@@ -255,26 +288,76 @@
         .catch(function () { ui.linterna.hidden = true; });
     });
 
-    var video = {
-      facingMode: { ideal: 'environment' },
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
-    };
+    function detener(stream) {
+      if (stream) stream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) {} });
+    }
+
+    // Pone un stream en el video (y suelta el anterior).
+    function usarStream(stream) {
+      detener(s.stream);
+      s.stream = stream;
+      s.track = stream.getVideoTracks()[0];
+      s.linterna = false;
+      ui.linterna.hidden = true;
+      ui.linterna.classList.remove('prendida');
+      prepararTrack(s);
+      ui.video.srcObject = stream;
+      return ui.video.play().catch(function () {});
+    }
+
+    function idActual() {
+      try { return (s.track && s.track.getSettings().deviceId) || ''; } catch (e) { return ''; }
+    }
+
+    // Pasa a la siguiente camara trasera y se acuerda de la elegida.
+    ui.cambiar.addEventListener('click', function () {
+      if (s.cambiando || !s.camaras || s.camaras.length < 2) return;
+      s.cambiando = true;
+      var previa = idActual();
+      var pos = 0;
+      s.camaras.forEach(function (d, k) { if (d.deviceId === previa) pos = k; });
+      var sig = (pos + 1) % s.camaras.length;
+      ui.estado.textContent = 'Cambiando de cámara…';
+      detener(s.stream);               // algunos celulares no abren dos a la vez
+      pedirCamara(s.camaras[sig].deviceId).then(function (st) {
+        if (!s.activo) { detener(st); return; }
+        guardarCamara(s.camaras[sig].deviceId);
+        return usarStream(st).then(function () {
+          s.ultimo = ''; s.iguales = 0;
+          ui.estado.textContent = 'Cámara ' + (sig + 1) + ' de ' + s.camaras.length + ' · apuntá al código';
+        });
+      }).catch(function () {
+        if (!s.activo) return;
+        ui.estado.textContent = 'No se pudo abrir esa cámara';
+        return pedirCamara(previa).then(function (st) {
+          if (!s.activo) { detener(st); return; }
+          return usarStream(st);
+        }).catch(function () {});
+      }).then(function () { s.cambiando = false; });
+    });
+
+    var guardada = camaraGuardada();
 
     Promise.all([
-      navigator.mediaDevices.getUserMedia({ video: video, audio: false }),
+      pedirCamara(guardada).catch(function (e) {
+        // La camara recordada ya no existe o no abre: se vuelve a la de siempre.
+        if (guardada && e && /Overconstrained|NotFound|NotReadable|Abort/.test(e.name)) {
+          guardarCamara('');
+          return pedirCamara('');
+        }
+        throw e;
+      }),
       // El detector se prepara mientras el usuario acepta el permiso.
       obtenerDetector().catch(function (e) { return { error: e }; }),
     ]).then(function (r) {
       var stream = r[0];
       var det = r[1];
       if (!s.activo) {
-        stream.getTracks().forEach(function (t) { t.stop(); });
+        detener(stream);
         return;
       }
-      s.stream = stream;
-      s.track = stream.getVideoTracks()[0];
       if (det.error) {
+        detener(stream);
         cerrar();
         alError('No se pudo cargar el lector de códigos: ' + det.error.message);
         return;
@@ -282,10 +365,14 @@
       s.det = det.det;
       s.tipo = det.tipo;
 
-      prepararTrack(s);
-      ui.video.srcObject = stream;
-      return ui.video.play().catch(function () {}).then(function () {
+      return usarStream(stream).then(listarTraseras).then(function (camaras) {
         if (!s.activo) return;
+        s.camaras = camaras;
+        if (camaras.length > 1) {
+          ui.cambiar.hidden = false;
+          ui.ayuda.textContent = 'Acercá o alejá un poco el celular, con el código derecho, dentro del ' +
+            'marco y con buena luz. Si no lee, probá otra cámara con el botón de arriba.';
+        }
         ui.estado.textContent = 'Apuntá al código de barras';
         s.ayuda = setTimeout(function () { ui.ayuda.hidden = false; }, MS_AYUDA);
         buscar(s, function (codigo) {

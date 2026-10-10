@@ -478,6 +478,7 @@
   function cargarProductos() {
     return api('/api/productos/todos').then(function (d) {
       estado.productos = d.productos;
+      pintarSabores();
       pintarTabla();
       pintarChipsCategorias();
     }).catch(function (e) { avisar(e.message, 'error'); });
@@ -523,7 +524,7 @@
       if (!verInactivos && !p.activo) return false;
       if (estado.categoriaFiltro && p.categoria !== estado.categoriaFiltro) return false;
       if (!filtro) return true;
-      return (p.nombre + ' ' + p.marca + ' ' + p.categoria + ' ' + (p.codigo_barras || ''))
+      return (p.nombre + ' ' + p.marca + ' ' + (p.sabor || '') + ' ' + (p.contenido || '') + ' ' + p.categoria + ' ' + (p.codigo_barras || ''))
         .toLowerCase().indexOf(filtro) !== -1;
     });
 
@@ -560,6 +561,13 @@
 
       var tdNombre = document.createElement('td');
       tdNombre.textContent = p.nombre;
+      var detalleProd = [p.sabor, p.contenido].filter(Boolean).join(' · ');
+      if (detalleProd) {
+        var sm = document.createElement('div');
+        sm.style.cssText = 'font-size:12px;color:var(--texto-tenue)';
+        sm.textContent = detalleProd;
+        tdNombre.appendChild(sm);
+      }
 
       var tdMarca = document.createElement('td');
       tdMarca.textContent = p.marca || '—';
@@ -615,6 +623,23 @@
     tbody.appendChild(frag);
   }
 
+  // Sabores ya usados, para autocompletar en el alta (una pasada por el catalogo).
+  function pintarSabores() {
+    var dl = $('listaSabores');
+    if (!dl) return;
+    var vistos = {};
+    estado.productos.forEach(function (p) {
+      var k = (p.sabor || '').trim();
+      if (k) vistos[k.toLowerCase()] = k;
+    });
+    dl.innerHTML = '';
+    Object.keys(vistos).sort().forEach(function (k) {
+      var o = document.createElement('option');
+      o.value = vistos[k];
+      dl.appendChild(o);
+    });
+  }
+
   function editar(p) {
     estado.editando = p.id;
     $('prodId').value = p.id;
@@ -637,6 +662,8 @@
       $('prodCategoria').appendChild(og);
     }
     $('prodCategoria').value = p.categoria_id || '';
+    $('prodSabor').value = p.sabor || '';
+    $('prodContenido').value = p.contenido || '';
     $('prodTipo').value = p.tipo;
     $('prodPrecio').value = (p.precio_centavos / 100).toFixed(2);
     $('prodCodigo').value = p.codigo_barras || '';
@@ -678,6 +705,8 @@
     var cuerpo = {
       nombre: $('prodNombre').value,
       marca_id: $('prodMarca').value || null,
+      sabor: $('prodSabor').value,
+      contenido: $('prodContenido').value,
       categoria_id: $('prodCategoria').value || null,
       tipo: $('prodTipo').value,
       precio_centavos: aCentavos($('prodPrecio').value),

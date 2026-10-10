@@ -146,6 +146,15 @@ if (!columnasProductos.some((c) => c.name === 'marca_id')) {
 // cuando se filtra o se borra una marca en uso.
 db.exec(`CREATE INDEX IF NOT EXISTS ix_productos_marca ON productos(marca_id)`);
 
+// --- Migracion: contenido (peso/litros del envase) y sabor ------------------
+// Texto corto y libre ("2,25 L", "500 g", "Zero", "Frutilla"). Sin indices:
+// no se filtra por ellos en SQL, viajan con el listado que ya se lee entero.
+{
+  const cols = db.prepare(`PRAGMA table_info(productos)`).all().map((c) => c.name);
+  if (!cols.includes('contenido')) db.exec(`ALTER TABLE productos ADD COLUMN contenido TEXT NOT NULL DEFAULT ''`);
+  if (!cols.includes('sabor')) db.exec(`ALTER TABLE productos ADD COLUMN sabor TEXT NOT NULL DEFAULT ''`);
+}
+
 // Da de alta en "marcas" cada texto distinto que haya en productos.marca y
 // enlaza marca_id. Idempotente: no repite marcas ya migradas.
 db.transaction(() => {
@@ -393,31 +402,31 @@ function montoDescuento(d, brutoCentavos) {
 // --- Sentencias preparadas --------------------------------------------------
 const S = {
   listarProductos: db.prepare(`
-    SELECT id, codigo_barras, nombre, marca, marca_id, categoria, categoria_id, tipo, precio_centavos, activo
+    SELECT id, codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo
     FROM productos
     WHERE activo = 1
     ORDER BY nombre, marca
   `),
 
   listarTodos: db.prepare(`
-    SELECT id, codigo_barras, nombre, marca, marca_id, categoria, categoria_id, tipo, precio_centavos, activo
+    SELECT id, codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo
     FROM productos
     ORDER BY activo DESC, nombre, marca
   `),
 
   porId: db.prepare(`
-    SELECT id, codigo_barras, nombre, marca, marca_id, categoria, categoria_id, tipo, precio_centavos, activo
+    SELECT id, codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo
     FROM productos WHERE id = ?
   `),
 
   porCodigo: db.prepare(`
-    SELECT id, codigo_barras, nombre, marca, marca_id, categoria, categoria_id, tipo, precio_centavos, activo
+    SELECT id, codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo
     FROM productos WHERE codigo_barras = ? AND activo = 1
   `),
 
   insertarProducto: db.prepare(`
-    INSERT INTO productos (codigo_barras, nombre, marca, marca_id, categoria, categoria_id, tipo, precio_centavos, activo)
-    VALUES (@codigo_barras, @nombre, @marca, @marca_id, @categoria, @categoria_id, @tipo, @precio_centavos, @activo)
+    INSERT INTO productos (codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo)
+    VALUES (@codigo_barras, @nombre, @marca, @marca_id, @contenido, @sabor, @categoria, @categoria_id, @tipo, @precio_centavos, @activo)
   `),
 
   actualizarProducto: db.prepare(`
@@ -426,6 +435,8 @@ const S = {
       nombre          = @nombre,
       marca           = @marca,
       marca_id        = @marca_id,
+      contenido       = @contenido,
+      sabor           = @sabor,
       categoria       = @categoria,
       categoria_id    = @categoria_id,
       tipo            = @tipo,
@@ -720,6 +731,11 @@ function resolverCategoria(categoria_id, categoriaTexto) {
   return { categoria_id: info.lastInsertRowid, categoria: 'General' };
 }
 
+// Texto libre corto: sin saltos de linea, espacios colapsados, hasta 40 caracteres.
+function textoCorto(v) {
+  return (v ?? '').toString().replace(/\s+/g, ' ').trim().slice(0, 40);
+}
+
 function normalizarProducto(p) {
   const tipo = p.tipo === 'unidad' ? 'unidad' : 'peso';
   const { marca_id, marca } = resolverMarca(p.marca_id);
@@ -729,6 +745,8 @@ function normalizarProducto(p) {
     nombre: (p.nombre ?? '').toString().trim(),
     marca_id,
     marca,
+    contenido: textoCorto(p.contenido),
+    sabor: textoCorto(p.sabor),
     categoria,
     categoria_id,
     tipo,

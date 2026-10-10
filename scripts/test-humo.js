@@ -192,6 +192,22 @@ async function esperarEstable(intentos = 25) {
     const malo = await get('/ventas/totales?mes=basura');
     chequear('mes invalido cae en el actual', malo.ok && malo.mes === tot.mes);
 
+    console.log('\n6c. Sabor y peso/litros del producto');
+    const cp = await post('/productos', {
+      nombre: 'Gaseosa test', sabor: '  Zero   cero ', contenido: '2,25 L', tipo: 'unidad', precio_centavos: 100000,
+    });
+    chequear('alta guarda sabor y contenido (normalizados)',
+      cp.ok && cp.producto.sabor === 'Zero cero' && cp.producto.contenido === '2,25 L',
+      JSON.stringify(cp.producto || cp));
+    const rp = await fetch(BASE + '/productos/' + cp.producto.id, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sabor: 'Frutilla' }),
+    }).then((r) => r.json());
+    chequear('editar un campo no borra el otro', rp.ok && rp.producto.sabor === 'Frutilla' && rp.producto.contenido === '2,25 L');
+    const lp = await get('/productos/todos');
+    const enLista = (lp.productos || []).find((p) => p.id === cp.producto.id);
+    chequear('el listado los trae', !!enLista && enLista.sabor === 'Frutilla' && enLista.contenido === '2,25 L');
+    await fetch(BASE + '/productos/' + cp.producto.id, { method: 'DELETE' });
+
     console.log('\n---------------------------------------------');
     if (fallos === 0) {
       console.log('  Todo OK.');

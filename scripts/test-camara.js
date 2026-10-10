@@ -258,6 +258,46 @@ async function partePantalla(dir) {
     chequear('sin errores de JavaScript', errores.length === 0, errores.join(' | '));
   });
 
+  // Varias camaras traseras (el unico dispositivo falso se "multiplica" en la pagina):
+  // aparece el boton de cambiar, pasa a la siguiente, recuerda la elegida y la
+  // pide primero la proxima vez. Video sin codigo: con uno legible la camara
+  // se cierra sola al leerlo.
+  await conCamara(videoVacio, async (pag, errores) => {
+    await pag.addInitScript(() => {
+      const md = navigator.mediaDevices;
+      const enumerar = md.enumerateDevices.bind(md);
+      const pedir = md.getUserMedia.bind(md);
+      window.__pedidas = [];
+      md.enumerateDevices = async () => (await enumerar()).filter((d) => d.kind !== 'videoinput').concat([
+        { kind: 'videoinput', deviceId: 'cam-a', label: 'camera2 0, facing back' },
+        { kind: 'videoinput', deviceId: 'cam-f', label: 'camera2 1, facing front' },
+        { kind: 'videoinput', deviceId: 'cam-b', label: 'camera2 2, facing back' },
+      ]);
+      md.getUserMedia = (c) => {
+        const v = c && c.video;
+        window.__pedidas.push(v && v.deviceId ? v.deviceId.exact : 'auto');
+        if (v && v.deviceId) { c = { ...c, video: { ...v } }; delete c.video.deviceId; }
+        return pedir(c);
+      };
+    });
+    await pag.goto(URL, { waitUntil: 'networkidle' });
+    await pag.click('#btnCamara');
+    await pag.waitForSelector('.camara-cambiar:not([hidden])', { timeout: 10000 }).catch(() => {});
+    chequear('con 2 cámaras traseras aparece el botón de cambiar', await pag.locator('.camara-cambiar').isVisible());
+    await pag.click('.camara-cambiar');
+    const texto = await pag.waitForFunction(() => /Cámara \d de 2/.test(document.querySelector('.camara-estado').textContent),
+      null, { timeout: 10000 }).then(() => true, () => false);
+    chequear('muestra "Cámara N de 2" (la frontal no cuenta)', texto);
+    chequear('pidió la otra cámara trasera', await pag.evaluate(() => window.__pedidas.slice(-1)[0]) === 'cam-b',
+      await pag.evaluate(() => window.__pedidas.join(',')));
+    chequear('recuerda la cámara elegida', await pag.evaluate(() => localStorage.getItem('pos.camaraId')) === 'cam-b');
+    await pag.click('.camara-cerrar');
+    await pag.click('#btnCamara');
+    await pag.waitForSelector('.camara-video', { timeout: 5000 }).catch(() => {});
+    chequear('la próxima vez abre la recordada', await pag.evaluate(() => window.__pedidas.slice(-1)[0]) === 'cam-b');
+    chequear('sin errores de JavaScript', errores.length === 0, errores.join(' | '));
+  });
+
   await conCamara(videoVacio, async (pag, errores) => {
     await pag.goto(URL, { waitUntil: 'networkidle' });
     const url0 = pag.url();

@@ -709,7 +709,7 @@
   function productosVisibles() {
     var f = estado.filtro.toLowerCase().trim();
     return estado.productos.filter(function (p) {
-      if (f) return (p.nombre + ' ' + p.marca + ' ' + p.categoria).toLowerCase().indexOf(f) !== -1;
+      if (f) return (p.nombre + ' ' + p.marca + ' ' + (p.sabor || '') + ' ' + (p.contenido || '') + ' ' + p.categoria).toLowerCase().indexOf(f) !== -1;
       if (p.categoria_id !== estado.grupoId) return false;
       return estado.marcaSel === null || claveMarca(p) === estado.marcaSel;
     });
@@ -748,10 +748,11 @@
       nom.textContent = p.nombre;
       arriba.appendChild(nom);
 
-      if (p.marca) {
+      var sub = [p.marca, p.sabor, p.contenido].filter(Boolean).join(' · ');
+      if (sub) {
         var ma = document.createElement('div');
         ma.className = 'prod-marca';
-        ma.textContent = p.marca;
+        ma.textContent = sub;
         arriba.appendChild(ma);
       }
 
