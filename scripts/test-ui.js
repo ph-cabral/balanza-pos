@@ -154,7 +154,7 @@ function chequear(desc, cond, detalle) {
     const ordenDespues = await pagina.locator('.grupo-nombre').allTextContents();
     chequear('el arrastre cambia el orden en pantalla',
       ordenAntes.join() !== ordenDespues.join(), ordenDespues.join(' · '));
-    await pagina.locator('#btnOrdenar').click();   // "Listo"
+    await pagina.locator('#btnOrdenar').click();   // "Finalizar"
 
     await pagina.reload({ waitUntil: 'networkidle' });
     await esperar(700);

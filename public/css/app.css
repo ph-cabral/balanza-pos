@@ -38,6 +38,7 @@ html, body {
   font-size: 16px;
   -webkit-user-select: none;
   user-select: none;
+  -webkit-touch-callout: none;
   overscroll-behavior: none;
 }
 
@@ -218,6 +219,7 @@ input  { font-family: inherit; font-size: inherit; }
   padding: 4px 20px 12px;
   min-height: 44px;
 }
+.vista-cab[hidden] { display: none; }
 .vista-titulo { font-size: 17px; font-weight: 700; }
 .vista-ayuda {
   flex: 1;
@@ -957,32 +959,6 @@ input  { font-family: inherit; font-size: inherit; }
 
 /* ---------- Leer codigos con la camara ---------- */
 
-/* Boton entre los grupos (primer casillero). No es un grupo: no se arrastra
-   ni se guarda en el orden, y en modo "ordenar" se esconde. */
-.tile-camara {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 4px;
-  min-height: 118px;
-  padding: 16px;
-  background: var(--panel);
-  border: 1px dashed var(--borde);
-  border-left: 4px solid var(--info);
-  border-radius: var(--radio);
-  color: var(--texto);
-  text-align: left;
-  font: inherit;
-  cursor: pointer;
-  transition: transform .06s, border-color .12s;
-}
-.tile-camara:active { transform: scale(.97); border-color: var(--info); }
-.tile-camara svg { width: 36px; height: 36px; color: var(--info); margin-bottom: auto; }
-.tile-camara .grupo-nombre { color: var(--texto); }
-.grupos[data-columnas="2"] .tile-camara,
-.grupos[data-columnas="3"] .tile-camara { min-height: 132px; }
-.grupos.ordenando .tile-camara { display: none; }
-
 .camara {
   position: fixed;
   inset: 0;
@@ -1093,6 +1069,7 @@ input  { font-family: inherit; font-size: inherit; }
 .izquierda, .grupos, .marcas, .grilla, .confirma-lista { touch-action: pan-y; }
 
 .acceso.activo { border-color: var(--picada); color: var(--picada); }
+.acceso.acceso-ordenar.activo { border-color: var(--acento); color: var(--acento); }
 
 .picada-banner {
   display: flex;

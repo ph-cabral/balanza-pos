@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0f1419">
 <title>Balanza POS</title>
-<link rel="stylesheet" href="/css/app.css?v=14">
+<link rel="stylesheet" href="/css/app.css?v=16">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
 </head>
 <body>
@@ -56,6 +56,17 @@
           </svg>
           <span>Ventas</span>
         </a>
+        <button type="button" class="acceso acceso-ordenar" id="btnOrdenar"
+                title="Acomodar el orden de los grupos y elegir columnas">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m21 16-4 4-4-4"/>
+            <path d="M17 20V4"/>
+            <path d="m3 8 4-4 4 4"/>
+            <path d="M7 4v16"/>
+          </svg>
+          <span id="btnOrdenarTexto">Ordenar</span>
+        </button>
         <a class="acceso" id="accesoAdmin" href="/admin.html"
            title="Grupos, productos, precios y estaciones">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -83,9 +94,10 @@
 
       <!-- ---------- Pantalla base: los grupos ---------- -->
       <section class="vista" id="vistaGrupos">
-        <div class="vista-cab">
+        <!-- Solo aparece al apretar Ordenar (arriba, junto a Ventas) -->
+        <div class="vista-cab orden-panel" id="ordenPanel" hidden>
           <div class="vista-titulo">Grupos</div>
-          <div class="vista-ayuda" id="ayudaOrden">Mantené apretado un grupo para acomodarlos</div>
+          <div class="vista-ayuda" id="ayudaOrden"></div>
           <div class="columnas" id="columnas" role="group" aria-label="Columnas">
             <span class="columnas-rot">Columnas</span>
             <button type="button" data-col="2">2</button>
@@ -93,7 +105,6 @@
             <button type="button" data-col="4">4</button>
             <button type="button" data-col="auto">Auto</button>
           </div>
-          <button class="btn chico" id="btnOrdenar">Ordenar</button>
         </div>
         <div class="grupos" id="grupos"></div>
       </section>
@@ -280,6 +291,6 @@
 
 <script src="/js/scanner.js?v=7"></script>
 <script src="/js/camara.js?v=8"></script>
-<script src="/js/pos.js?v=14"></script>
+<script src="/js/pos.js?v=16"></script>
 </body>
 </html>

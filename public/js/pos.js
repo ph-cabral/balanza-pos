@@ -82,6 +82,8 @@
 
     grupos: $('grupos'),
     btnOrdenar: $('btnOrdenar'),
+    btnOrdenarTexto: $('btnOrdenarTexto'),
+    ordenPanel: $('ordenPanel'),
     columnas: $('columnas'),
     ayudaOrden: $('ayudaOrden'),
     marcas: $('marcas'),
@@ -573,9 +575,6 @@
   function pintarGrupos() {
     el.grupos.innerHTML = '';
 
-    // Primer casillero: leer un codigo con la camara del celular/tablet.
-    if (estado.camara) el.grupos.appendChild(botonCamara());
-
     if (!estado.grupos.length) {
       var v = document.createElement('div');
       v.className = 'vacio';
@@ -644,24 +643,6 @@
     el.marcas.appendChild(frag);
   }
 
-  var ICONO_CAMARA =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
-    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-    '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>' +
-    '<circle cx="12" cy="13" r="3"/></svg>';
-
-  function botonCamara() {
-    var b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'tile-camara';
-    b.id = 'btnCamara';
-    b.innerHTML = ICONO_CAMARA +
-      '<div class="grupo-nombre">Escanear</div>' +
-      '<div class="grupo-cuenta">con la cámara</div>';
-    b.addEventListener('click', abrirCamara);
-    return b;
-  }
-
   function abrirCamara() {
     if (estado.ordenando || !window.Camara) return;
     window.Camara.abrir({
@@ -683,7 +664,7 @@
     window.Camara.hayCamara().then(function (si) {
       if (si === estado.camara) return;
       estado.camara = si;
-      pintarGrupos();
+      textoAyudaGrupos();
     });
   }
 
@@ -790,32 +771,31 @@
   /**
    * Arrastrar para acomodar los grupos.
    *
-   * Fuera del modo ordenar, mantener apretado un grupo entra al modo (asi no se
-   * desacomodan solos mientras se vende). Dentro del modo, el arrastre arranca
-   * apenas se toca y los grupos dejan de tomar el gesto de scroll
-   * (touch-action), que es lo que en una tablet corta el arrastre por la mitad.
+   * Se entra al modo con el boton Ordenar (asi no se desacomodan solos mientras
+   * se vende; mantener apretado esta reservado para escanear). Dentro del modo,
+   * el arrastre arranca apenas se toca y los grupos dejan de tomar el gesto de
+   * scroll (touch-action), que es lo que en una tablet corta el arrastre por la
+   * mitad.
    */
   function modoOrdenar(activo) {
     estado.ordenando = !!activo;
     el.grupos.classList.toggle('ordenando', estado.ordenando);
-    el.btnOrdenar.textContent = estado.ordenando ? 'Listo' : 'Ordenar';
+    el.btnOrdenarTexto.textContent = estado.ordenando ? 'Finalizar' : 'Ordenar';
     el.btnOrdenar.classList.toggle('activo', estado.ordenando);
+    el.ordenPanel.hidden = !estado.ordenando;
+    textoAyudaGrupos();
+  }
+
+  function textoAyudaGrupos() {
     el.ayudaOrden.textContent = estado.ordenando
       ? 'Arrastrá los grupos para acomodarlos'
-      : 'Mantené apretado un grupo para acomodarlos';
+      : (estado.camara ? 'Mantené apretada la pantalla para escanear' : '');
   }
 
   function habilitarArrastre() {
     var cont = el.grupos;
-    var hold = null;      // temporizador del "mantener apretado"
-    var inicio = null;    // punto donde empezo el toque
     var arr = null;       // arrastre en curso
     var hueco = null;     // lugar que va a ocupar al soltar
-
-    function cancelarHold() {
-      if (hold) { clearTimeout(hold); hold = null; }
-      inicio = null;
-    }
 
     function ubicar(x, y) {
       arr.tile.style.transform =
@@ -867,30 +847,18 @@
     }
 
     cont.addEventListener('pointerdown', function (e) {
+      if (!estado.ordenando) return;
       var tile = e.target.closest ? e.target.closest('.grupo') : null;
       if (!tile || tile.classList.contains('hueco')) return;
-
-      if (estado.ordenando) { iniciar(tile, e); return; }
-
-      inicio = { x: e.clientX, y: e.clientY };
-      hold = setTimeout(function () {
-        hold = null;
-        inicio = null;
-        // Este toque solo entra al modo; el arrastre es el gesto siguiente.
-        modoOrdenar(true);
-        if (navigator.vibrate) { try { navigator.vibrate(15); } catch (err) {} }
-      }, 450);
+      iniciar(tile, e);
     });
 
     cont.addEventListener('pointermove', function (e) {
-      if (inicio && (Math.abs(e.clientX - inicio.x) > 10 || Math.abs(e.clientY - inicio.y) > 10)) {
-        cancelarHold();
-      }
       if (arr) mover(e);
     });
 
-    cont.addEventListener('pointerup', function () { cancelarHold(); soltar(); });
-    cont.addEventListener('pointercancel', function () { cancelarHold(); soltar(); });
+    cont.addEventListener('pointerup', soltar);
+    cont.addEventListener('pointercancel', soltar);
   }
 
   function guardarOrden() {
@@ -1432,6 +1400,59 @@
     }, true);
   }
 
+  /**
+   * Mantener apretada la pantalla abre la camara para escanear (no hay boton).
+   * Vale en cualquier parte del POS, sobre grupos y productos tambien. No
+   * dispara con un toque corto, con un arrastre (scroll, deslizar la picada o
+   * un item), con dos dedos, sobre campos de texto, dentro de un modal, con la
+   * camara ya abierta ni en modo ordenar. Al disparar vibra y el click que
+   * seguiria al soltar se anula, para no abrir el grupo que quedo debajo.
+   */
+  var MS_MANTENER = 600;
+
+  function habilitarMantenerEscanear() {
+    var timer = null, x0 = 0, y0 = 0, cortarClick = false;
+
+    function cancelar() {
+      if (timer) { clearTimeout(timer); timer = null; }
+    }
+
+    document.addEventListener('pointerdown', function (e) {
+      cancelar();
+      cortarClick = false;
+      if (!e.isPrimary || e.button > 0) return;               // segundo dedo / otro boton
+      if (!estado.camara || estado.ordenando || !window.Camara || window.Camara.abierta()) return;
+      if (e.target.closest && e.target.closest('input, select, textarea, #columnas, .selector-estacion')) return;
+      x0 = e.clientX;
+      y0 = e.clientY;
+      timer = setTimeout(function () {
+        timer = null;
+        cortarClick = true;
+        if (navigator.vibrate) { try { navigator.vibrate(20); } catch (err) {} }
+        abrirCamara();
+      }, MS_MANTENER);
+    }, true);
+
+    document.addEventListener('pointermove', function (e) {
+      if (timer && (Math.abs(e.clientX - x0) > 10 || Math.abs(e.clientY - y0) > 10)) cancelar();
+    }, true);
+    document.addEventListener('pointerup', cancelar, true);
+    document.addEventListener('pointercancel', cancelar, true);
+
+    document.addEventListener('click', function (e) {
+      if (!cortarClick) return;
+      cortarClick = false;
+      e.preventDefault();
+      e.stopPropagation();
+    }, true);
+
+    // El mantener apretado largo suele abrir el menu contextual del navegador.
+    document.addEventListener('contextmenu', function (e) {
+      if (e.target.closest && e.target.closest('input, textarea')) return;
+      if (timer || cortarClick) e.preventDefault();
+    }, true);
+  }
+
   // ------------------------------------------------------------- descuentos
 
   function pintarDescuento() {
@@ -1951,7 +1972,12 @@
     el.btnVolver.addEventListener('click', volverDeProductos);
     el.btnVolverMarcas.addEventListener('click', volverAGrupos);
     el.btnSeguir.addEventListener('click', volverAGrupos);
-    el.btnOrdenar.addEventListener('click', function () { modoOrdenar(!estado.ordenando); });
+    el.btnOrdenar.addEventListener('click', function () {
+      if (estado.ordenando) { modoOrdenar(false); return; }
+      // Desde cualquier pantalla: primero a los grupos, despues el modo ordenar.
+      if (estado.vista !== 'grupos' || estado.filtro) volverAGrupos();
+      modoOrdenar(true);
+    });
     if (el.columnas) {
       el.columnas.addEventListener('click', function (e) {
         var b = e.target.closest('button[data-col]');
@@ -2004,6 +2030,7 @@
     habilitarArrastre();
     habilitarHoja();
     habilitarGestoPicada();
+    habilitarMantenerEscanear();
 
     // Simulacion de picada
     estado.picada.mermaKg = leerMerma();

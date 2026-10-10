@@ -14,7 +14,8 @@
  *   2. Servidor: http y https en el mismo puerto, WebSocket por ws y wss,
  *      /api/red con las direcciones seguras, .wasm con su tipo.
  *   3. Pantalla (si hay Playwright), en tamaño celular:
- *      - boton de camara entre los grupos, escondido al ordenar
+ *      - sin boton: mantener apretada la pantalla abre la camara (no con un
+ *        toque, un arrastre ni en modo ordenar)
  *      - lee el codigo, carga el producto y sube el carrito
  *      - codigo sin producto: aviso
  *      - la X y el boton "atras" cierran la camara sin salir del POS
@@ -35,6 +36,20 @@ const CODIGO = '7790895000997';          // producto de prueba
 const CODIGO_SIN_PRODUCTO = '7790520000019';
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // certificado autofirmado de la prueba
+
+/** Mantener apretada la pantalla (sobre un grupo, a proposito) ~0,9 s. */
+async function mantener(pag, ms = 900) {
+  const caja = await pag.evaluate(() => {
+    const g = document.querySelector('#grupos .grupo');
+    const r = g ? g.getBoundingClientRect() : null;
+    if (!r || !r.width) return { x: innerWidth / 2, y: innerHeight / 3 };
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  });
+  await pag.mouse.move(caja.x, caja.y);
+  await pag.mouse.down();
+  await esperar(ms);
+  await pag.mouse.up();
+}
 
 let fallos = 0;
 function chequear(desc, cond, detalle) {
@@ -209,18 +224,36 @@ async function partePantalla(dir) {
 
   await conCamara(videoOk, async (pag, errores) => {
     await pag.goto(URL, { waitUntil: 'networkidle' });
-    await pag.waitForSelector('#btnCamara', { timeout: 5000 }).catch(() => {});
-    const boton = pag.locator('#btnCamara');
-    chequear('botón de cámara entre los grupos', await boton.isVisible());
-    chequear('es el primer casillero', await pag.evaluate(() => document.querySelector('#grupos').firstElementChild.id === 'btnCamara'));
+    await pag.waitForSelector('#grupos .grupo', { timeout: 5000 }).catch(() => {});
+    chequear('sin botón de cámara entre los grupos', (await pag.locator('#btnCamara, .tile-camara').count()) === 0);
+    chequear('la ayuda avisa que se mantiene apretado', await pag.evaluate(() => /Mantené apretada/.test(document.querySelector('#ayudaOrden').textContent)));
     await pag.screenshot({ path: path.join(salida, 'camara-1-grupos.png') });
 
-    await pag.click('#btnOrdenar');
-    chequear('en modo ordenar se esconde', !(await boton.isVisible()));
-    await pag.click('#btnOrdenar');
-    chequear('y vuelve al salir', await boton.isVisible());
+    // Un toque corto sobre un grupo abre el grupo, no la cámara.
+    await pag.click('#grupos .grupo');
+    await esperar(200);
+    chequear('un toque corto no abre la cámara', (await pag.locator('.camara').count()) === 0);
+    chequear('y abre el grupo', await pag.evaluate(() => document.querySelector('#vistaGrupos').hidden));
+    await pag.goto(URL, { waitUntil: 'networkidle' });
+    await pag.waitForSelector('#grupos .grupo', { timeout: 5000 });
 
-    await boton.click();
+    // Arrastrar antes de 0,6 s (scroll) no abre la cámara.
+    await pag.mouse.move(100, 300);
+    await pag.mouse.down();
+    await pag.mouse.move(100, 360, { steps: 4 });
+    await esperar(800);
+    await pag.mouse.up();
+    chequear('arrastrar no abre la cámara', (await pag.locator('.camara').count()) === 0);
+    await pag.goto(URL, { waitUntil: 'networkidle' });
+    await pag.waitForSelector('#grupos .grupo', { timeout: 5000 });
+
+    await pag.click('#btnOrdenar');
+    await mantener(pag);
+    chequear('en modo ordenar mantener no abre la cámara', (await pag.locator('.camara').count()) === 0);
+    await pag.click('#btnOrdenar');
+    await esperar(200);
+
+    await mantener(pag);
     await pag.waitForSelector('.camara', { timeout: 5000 });
     chequear('abre la cámara a pantalla completa', await pag.locator('.camara video').isVisible());
     await esperar(400);
@@ -237,7 +270,7 @@ async function partePantalla(dir) {
 
     // Otra vez el mismo: suma una unidad (no duplica la linea).
     await esperar(6500);
-    await pag.click('#btnCamara');
+    await mantener(pag);
     const dos = await pag.waitForFunction(() => {
       const v = document.querySelectorAll('#carritoLista .cant-valor');
       return v.length === 1 && v[0].textContent.trim() === '2';
@@ -249,7 +282,7 @@ async function partePantalla(dir) {
 
   await conCamara(videoOtro, async (pag, errores) => {
     await pag.goto(URL, { waitUntil: 'networkidle' });
-    await pag.click('#btnCamara');
+    await mantener(pag);
     const aviso = await pag.waitForFunction(
       (c) => document.querySelector('#avisos').textContent.indexOf(c) !== -1, CODIGO_SIN_PRODUCTO, { timeout: 15000 },
     ).then(() => true, () => false);
@@ -281,7 +314,7 @@ async function partePantalla(dir) {
       };
     });
     await pag.goto(URL, { waitUntil: 'networkidle' });
-    await pag.click('#btnCamara');
+    await mantener(pag);
     await pag.waitForSelector('.camara-cambiar:not([hidden])', { timeout: 10000 }).catch(() => {});
     chequear('con 2 cámaras traseras aparece el botón de cambiar', await pag.locator('.camara-cambiar').isVisible());
     await pag.click('.camara-cambiar');
@@ -292,7 +325,7 @@ async function partePantalla(dir) {
       await pag.evaluate(() => window.__pedidas.join(',')));
     chequear('recuerda la cámara elegida', await pag.evaluate(() => localStorage.getItem('pos.camaraId')) === 'cam-b');
     await pag.click('.camara-cerrar');
-    await pag.click('#btnCamara');
+    await mantener(pag);
     await pag.waitForSelector('.camara-video', { timeout: 5000 }).catch(() => {});
     chequear('la próxima vez abre la recordada', await pag.evaluate(() => window.__pedidas.slice(-1)[0]) === 'cam-b');
     chequear('sin errores de JavaScript', errores.length === 0, errores.join(' | '));
@@ -301,7 +334,7 @@ async function partePantalla(dir) {
   await conCamara(videoVacio, async (pag, errores) => {
     await pag.goto(URL, { waitUntil: 'networkidle' });
     const url0 = pag.url();
-    await pag.click('#btnCamara');
+    await mantener(pag);
     await pag.waitForSelector('.camara video');
     await esperar(800);
     chequear('sin código a la vista sigue buscando', (await pag.locator('.camara').count()) === 1);
@@ -310,7 +343,7 @@ async function partePantalla(dir) {
     chequear('la X la cierra', (await pag.locator('.camara').count()) === 0 && !(await pag.evaluate(() => window.Camara.abierta())));
     chequear('y se queda en el POS', pag.url() === url0);
 
-    await pag.click('#btnCamara');
+    await mantener(pag);
     await pag.waitForSelector('.camara video');
     await pag.goBack();
     await esperar(400);
@@ -325,8 +358,8 @@ async function partePantalla(dir) {
       const inseguro = `http://${ip}:${PUERTO}/`;
       await pag.goto(inseguro, { waitUntil: 'networkidle' });
       chequear('por http://IP la página no es segura', !(await pag.evaluate(() => window.isSecureContext)));
-      chequear('en celular igual muestra el botón', await pag.locator('#btnCamara').isVisible());
-      await pag.click('#btnCamara');
+      chequear('en celular igual avisa que se mantiene apretado', await pag.evaluate(() => /Mantené apretada/.test(document.querySelector('#ayudaOrden').textContent)));
+      await mantener(pag);
       const ir = pag.locator('.aviso-accion', { hasText: 'versión segura' });
       chequear('avisa y ofrece ir a la versión segura', await ir.isVisible());
       await esperar(300);
@@ -338,7 +371,7 @@ async function partePantalla(dir) {
         null, { timeout: 5000 }).catch(() => {});
       chequear('y el peso llega por wss', await pag.evaluate(() => !/Conectando|Sin conex/i.test(document.querySelector('#chipTexto').textContent)),
         await pag.evaluate(() => document.querySelector('#chipTexto').textContent));
-      await pag.click('#btnCamara');
+      await mantener(pag);
       chequear('y la cámara abre', await pag.waitForSelector('.camara video', { timeout: 5000 }).then(() => true, () => false));
       await pag.click('.camara-cerrar');
 
@@ -349,7 +382,7 @@ async function partePantalla(dir) {
       await pag.waitForFunction(() => document.querySelectorAll('#carritoLista .item').length === 1, null, { timeout: 5000 });
       await pag.evaluate(() => { const b = document.querySelector('#buscador'); b.value = ''; b.dispatchEvent(new Event('input')); });
       await esperar(300);
-      await pag.evaluate(() => document.querySelector('#btnCamara').click());
+      await mantener(pag);
       await esperar(200);
       chequear('con venta abierta no ofrece cambiar de dirección',
         (await pag.locator('.aviso-accion', { hasText: 'versión segura' }).count()) === 0 &&
