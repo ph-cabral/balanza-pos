@@ -10,18 +10,32 @@ html, body { overflow: auto; user-select: text; -webkit-user-select: text; }
 
 .admin-cab {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
   margin-bottom: 20px;
 }
+.admin-cab-top { display: flex; align-items: baseline; gap: 12px; }
+/* Dos cuadrados (Agregar / Escanear) y abajo el rectangular de volver. */
+.admin-acciones { display: flex; gap: 12px; }
+.admin-cab .btn-cuadro {
+  flex: 1 1 0;
+  max-width: 180px;
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  aspect-ratio: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 700;
+}
+.admin-cab .btn-cuadro[hidden] { display: none; }
+.cuadro-ico { font-size: 38px; line-height: 1; }
+.admin-cab .btn-volver { justify-content: center; min-height: 52px; }
 .admin-titulo { font-size: 22px; font-weight: 700; margin: 0; }
 .admin-cab .btn { display: inline-flex; align-items: center; white-space: nowrap; text-decoration: none; }
-/* Celular: el boton de volver baja de renglon en vez de aplastarse. */
-@media (max-width: 520px) {
-  .admin-cab { flex-wrap: wrap; gap: 10px 12px; }
-  .admin-cab .btn { width: 100%; justify-content: center; }
-}
 .admin-version { margin-left: auto; font-size: 12px; opacity: .6; white-space: nowrap; }
 .admin-version.alerta { opacity: 1; color: #f0a020; }
 .aviso-version {
@@ -394,7 +408,7 @@ td select.asignar {
 .gastos-tabla tr.fila-total td { font-weight: 700; border-top: 1px solid var(--borde); border-bottom: 0; }
 
 /* Formulario de producto recien abierto por un escaneo. */
-.panel.resaltado { animation: resaltar-escaneo 1.4s ease-out; }
+.panel.resaltado, .selector-caja.resaltado { animation: resaltar-escaneo 1.4s ease-out; }
 @keyframes resaltar-escaneo {
   0%   { box-shadow: 0 0 0 3px var(--acento); }
   100% { box-shadow: 0 0 0 3px transparent; }
@@ -406,3 +420,8 @@ td select.asignar {
 .input-con-boton input { flex: 1; min-width: 0; }
 .input-con-boton .btn-camara-campo { padding: 0 12px; font-size: 18px; }
 .aviso .aviso-accion { margin-left: 10px; }
+
+/* Modal de alta / edicion de articulo */
+.caja-producto { width: min(760px, 100%); }
+.caja-producto .modal-titulo { margin: 0; font-size: 20px; font-weight: 700; }
+.caja-producto .acciones-form { margin-bottom: 0; }

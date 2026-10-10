@@ -6,17 +6,26 @@
 <meta name="theme-color" content="#0f1419">
 <title>Administración · Balanza POS</title>
 <link rel="stylesheet" href="/css/app.css?v=6">
-<link rel="stylesheet" href="/css/admin.css?v=12">
+<link rel="stylesheet" href="/css/admin.css?v=13">
 </head>
 <body>
 
 <div class="admin">
 
   <header class="admin-cab">
-    <h1 class="admin-titulo">Administración</h1>
-    <span class="admin-version" id="adminVersion"></span>
-    <button type="button" class="btn btn-camara" id="btnEscanearAdmin" hidden>📷 Escanear artículo</button>
-    <a class="btn" href="/">← Volver al punto de venta</a>
+    <div class="admin-cab-top">
+      <h1 class="admin-titulo">Administración</h1>
+      <span class="admin-version" id="adminVersion"></span>
+    </div>
+    <div class="admin-acciones">
+      <button type="button" class="btn btn-cuadro" id="btnAgregarArticulo">
+        <span class="cuadro-ico" aria-hidden="true">＋</span>Agregar
+      </button>
+      <button type="button" class="btn btn-cuadro btn-camara" id="btnEscanearAdmin" hidden>
+        <span class="cuadro-ico" aria-hidden="true">📷</span>Escanear
+      </button>
+    </div>
+    <a class="btn btn-volver" href="/">← Volver a facturación</a>
   </header>
 
   <div class="aviso-version" id="avisoVersion" hidden>
@@ -120,77 +129,11 @@
   <!-- ================= PRODUCTOS ================= -->
   <section data-panel="productos" hidden>
     <div class="panel">
-      <h2 id="formTitulo">Nuevo producto</h2>
-      <p class="ayuda">
-        Los productos “por peso” se cobran por kilo y toman el peso de la balanza.
-        Los “por unidad” se suman de a uno, ideal para lo que se escanea. El grupo
-        y la marca se eligen de las listas cargadas en las pestañas “Grupos” y
-        “Marcas”.
-      </p>
-      <p class="ayuda">
-        Escaneá un código en cualquier pestaña: si el artículo existe se abre su
-        ficha para cambiarle el precio; si no, el alta con el código ya cargado.
-        Con el cursor en “Código de barras”, el escaneo solo completa ese campo.
-      </p>
-
-      <form id="formProducto">
-        <input type="hidden" id="prodId">
-        <div class="form-grilla">
-          <div class="campo">
-            <label for="prodNombre">Producto</label>
-            <input id="prodNombre" required placeholder="Jamón cocido">
-          </div>
-          <div class="campo">
-            <label for="prodMarca">Marca</label>
-            <select id="prodMarca">
-              <option value="">— Sin marca —</option>
-            </select>
-          </div>
-          <div class="campo">
-            <label for="prodSabor">Sabor</label>
-            <input id="prodSabor" list="listaSabores" maxlength="40" placeholder="Zero, Frutilla… (opcional)" autocomplete="off">
-            <datalist id="listaSabores"></datalist>
-          </div>
-          <div class="campo">
-            <label for="prodContenido">Peso / litros</label>
-            <input id="prodContenido" maxlength="40" placeholder="2,25 L · 500 g (opcional)" autocomplete="off">
-          </div>
-          <div class="campo">
-            <label for="prodCategoria">Grupo</label>
-            <select id="prodCategoria"></select>
-          </div>
-          <div class="campo">
-            <label for="prodTipo">Se vende</label>
-            <select id="prodTipo">
-              <option value="peso">Por peso (precio por kg)</option>
-              <option value="unidad">Por unidad</option>
-            </select>
-          </div>
-          <div class="campo">
-            <label for="prodPrecio">Precio <span id="lblPrecio">por kg</span></label>
-            <input id="prodPrecio" type="number" step="0.01" min="0" required placeholder="12500.00">
-          </div>
-          <div class="campo">
-            <label for="prodCodigo">Código de barras</label>
-            <div class="input-con-boton">
-              <input id="prodCodigo" placeholder="opcional" autocomplete="off">
-              <button type="button" class="btn btn-camara-campo" id="btnCamaraCodigo" title="Leer el código con la cámara" aria-label="Leer el código con la cámara" hidden>📷</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="acciones-form">
-          <button type="submit" class="btn-primario" id="btnGuardar">Guardar producto</button>
-          <button type="button" class="btn" id="btnCancelar" hidden>Cancelar edición</button>
-        </div>
-      </form>
-    </div>
-
-    <div class="panel">
       <h2>Catálogo</h2>
       <p class="ayuda">
         Agrupado en el mismo orden que la pantalla de venta. Tocá un grupo para
-        filtrar la tabla.
+        filtrar la tabla. Para dar de alta usá «Agregar» o «Escanear» (arriba): si
+        el código ya es de un artículo se abre su ficha para cambiarle el precio.
       </p>
       <div class="form-grilla" style="grid-template-columns: 1fr auto;">
         <div class="campo">
@@ -468,10 +411,68 @@ Gaseosa 500ml;Coca Cola;Bebidas;unidad;1500;7790895000997"></textarea>
 
 </div>
 
+<!-- Alta / edición de artículo (Agregar, Escanear o Editar del catálogo) -->
+<div class="selector-estacion" id="modalProducto" hidden>
+  <div class="selector-caja caja-producto" role="dialog" aria-modal="true" aria-labelledby="formTitulo">
+    <h2 class="modal-titulo" id="formTitulo">Nuevo producto</h2>
+    <form id="formProducto">
+      <input type="hidden" id="prodId">
+      <div class="form-grilla">
+        <div class="campo">
+          <label for="prodNombre">Producto</label>
+          <input id="prodNombre" required placeholder="Jamón cocido">
+        </div>
+        <div class="campo">
+          <label for="prodMarca">Marca</label>
+          <select id="prodMarca">
+            <option value="">— Sin marca —</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label for="prodSabor">Sabor</label>
+          <input id="prodSabor" list="listaSabores" maxlength="40" placeholder="Zero, Frutilla… (opcional)" autocomplete="off">
+          <datalist id="listaSabores"></datalist>
+        </div>
+        <div class="campo">
+          <label for="prodContenido">Peso / litros</label>
+          <input id="prodContenido" maxlength="40" placeholder="2,25 L · 500 g (opcional)" autocomplete="off">
+        </div>
+        <div class="campo">
+          <label for="prodCategoria">Grupo</label>
+          <select id="prodCategoria"></select>
+        </div>
+        <div class="campo">
+          <label for="prodTipo">Se vende</label>
+          <select id="prodTipo">
+            <option value="peso">Por peso (precio por kg)</option>
+            <option value="unidad">Por unidad</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label for="prodPrecio">Precio <span id="lblPrecio">por kg</span></label>
+          <input id="prodPrecio" type="number" step="0.01" min="0" required placeholder="12500.00">
+        </div>
+        <div class="campo">
+          <label for="prodCodigo">Código de barras</label>
+          <div class="input-con-boton">
+            <input id="prodCodigo" placeholder="opcional" autocomplete="off">
+            <button type="button" class="btn btn-camara-campo" id="btnCamaraCodigo" title="Leer el código con la cámara" aria-label="Leer el código con la cámara" hidden>📷</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="acciones-form">
+        <button type="submit" class="btn-primario" id="btnGuardar">Guardar producto</button>
+        <button type="button" class="btn" id="btnCancelar">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div class="avisos" id="avisos"></div>
 
 <script src="/js/scanner.js?v=1"></script>
 <script src="/js/camara.js?v=8"></script>
-<script src="/js/admin.js?v=15"></script>
+<script src="/js/admin.js?v=16"></script>
 </body>
 </html>

@@ -669,9 +669,8 @@
     $('prodCodigo').value = p.codigo_barras || '';
     $('formTitulo').textContent = 'Editando: ' + p.nombre;
     $('btnGuardar').textContent = 'Guardar cambios';
-    $('btnCancelar').hidden = false;
     actualizarLabelPrecio();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    abrirModalProducto();
   }
 
   function limpiarForm() {
@@ -680,8 +679,17 @@
     $('prodId').value = '';
     $('formTitulo').textContent = 'Nuevo producto';
     $('btnGuardar').textContent = 'Guardar producto';
-    $('btnCancelar').hidden = true;
     actualizarLabelPrecio();
+  }
+
+  // Alta / edicion en modal: se abre con Agregar, Escanear o Editar.
+  function abrirModalProducto() {
+    $('modalProducto').hidden = false;
+  }
+
+  function cerrarModalProducto() {
+    $('modalProducto').hidden = true;
+    limpiarForm();
   }
 
   function darDeBaja(p) {
@@ -698,7 +706,15 @@
   $('prodTipo').addEventListener('change', actualizarLabelPrecio);
   $('filtroProductos').addEventListener('input', pintarTabla);
   $('verInactivos').addEventListener('change', function () { pintarChipsCategorias(); pintarTabla(); });
-  $('btnCancelar').addEventListener('click', limpiarForm);
+  $('btnCancelar').addEventListener('click', cerrarModalProducto);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !$('modalProducto').hidden) cerrarModalProducto();
+  });
+  $('btnAgregarArticulo').addEventListener('click', function () {
+    limpiarForm();
+    abrirModalProducto();
+    enfocar($('prodNombre'));
+  });
 
   $('formProducto').addEventListener('submit', function (e) {
     e.preventDefault();
@@ -724,7 +740,7 @@
     })
       .then(function () {
         avisar(estado.editando ? 'Producto actualizado' : 'Producto agregado', 'ok');
-        limpiarForm();
+        cerrarModalProducto();
         return cargarProductos();
       })
       .catch(function (err) { avisar(err.message, 'error'); });
@@ -744,7 +760,7 @@
   })();
 
   function marcarFormulario() {
-    var f = $('formProducto').closest('.panel');
+    var f = $('modalProducto').querySelector('.selector-caja');
     f.classList.remove('resaltado');
     void f.offsetWidth; // reinicia la animacion si se escanea dos veces seguidas
     f.classList.add('resaltado');
@@ -756,7 +772,6 @@
   }
 
   function abrirPorCodigo(codigo) {
-    activarTab('productos');
     // Lista fresca: el articulo pudo darse de alta desde otro equipo.
     return cargarProductos().then(function () {
       var p = estado.productos.filter(function (x) { return (x.codigo_barras || '') === codigo; })[0];
@@ -772,8 +787,8 @@
         $('prodTipo').value = 'unidad';
         actualizarLabelPrecio();
         $('formTitulo').textContent = 'Nuevo producto · código ' + codigo;
+        abrirModalProducto();
         enfocar($('prodNombre'));
-        window.scrollTo({ top: 0, behavior: 'smooth' });
         avisar('Código ' + codigo + ' sin producto: completá el alta', 'atencion');
       }
       marcarFormulario();
@@ -796,7 +811,7 @@
     var foco = document.activeElement;
     // Con el cursor en "Código de barras" el escaneo es para ese campo (asignar
     // un codigo a un articulo que no lo tenia): no se sale del formulario.
-    if (foco === $('prodCodigo') && !document.querySelector('[data-panel="productos"]').hidden) {
+    if (foco === $('prodCodigo') && !$('modalProducto').hidden) {
       if (!porTeclado) $('prodCodigo').value = codigo;
       return;
     }
