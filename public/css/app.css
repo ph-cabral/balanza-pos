@@ -354,7 +354,6 @@ input  { font-family: inherit; font-size: inherit; }
   transition: transform .06s, border-color .12s;
 }
 .marca-tile:active { transform: scale(.97); border-color: var(--acento); }
-.marca-tile.sin-marca { border-left-color: var(--texto-tenue); }
 .marca-nombre { font-size: 20px; font-weight: 700; line-height: 1.2; overflow-wrap: break-word; }
 .marca-cuenta { font-size: 13px; color: var(--texto-tenue); font-weight: 600; }
 

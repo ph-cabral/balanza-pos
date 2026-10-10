@@ -31,7 +31,8 @@
     filtro: '',
     grupoId: null,
     // Marca elegida dentro del grupo: null = todas (grupo con una sola marca o
-    // sin marcas), '' = productos sin marca, si no la marca en minusculas.
+    // sin marcas), si no la marca en minusculas. Los productos sin marca se
+    // muestran sueltos en la vista de marcas, sin pasar por aca.
     marcaSel: null,
     marcaNombre: '',
     vista: 'grupos',
@@ -487,7 +488,9 @@
   function abrirGrupo(id) {
     estado.grupoId = id;
     estado.marcaSel = null;
-    if (marcasDelGrupo().length > 1) {
+    var mg = marcasDelGrupo();
+    // Marcas: con 2 o mas, o con una y productos sueltos que mostrar al lado.
+    if (mg.marcas.length > 1 || (mg.marcas.length === 1 && mg.sueltos.length)) {
       mostrarVista('marcas');
       pintarMarcas();
     } else {
@@ -516,25 +519,26 @@
 
   function claveMarca(p) { return (p.marca || '').trim().toLowerCase(); }
 
-  /** Marcas del grupo abierto con su cuenta, ordenadas; "Sin marca" al final. Un solo recorrido. */
+  /**
+   * Marcas reales del grupo abierto (ordenadas, con su cuenta) y los productos
+   * sin marca, que se muestran sueltos junto a las marcas. Un solo recorrido.
+   */
   function marcasDelGrupo() {
-    var mapa = {}, lista = [];
+    var mapa = {}, marcas = [], sueltos = [];
     for (var i = 0; i < estado.productos.length; i++) {
       var p = estado.productos[i];
       if (p.categoria_id !== estado.grupoId) continue;
       var k = claveMarca(p);
+      if (!k) { sueltos.push(p); continue; }
       var m = mapa[k];
       if (!m) {
-        m = mapa[k] = { clave: k, nombre: k ? p.marca.trim() : 'Sin marca', productos: 0 };
-        lista.push(m);
+        m = mapa[k] = { clave: k, nombre: p.marca.trim(), productos: 0 };
+        marcas.push(m);
       }
       m.productos++;
     }
-    lista.sort(function (a, b) {
-      if (!a.clave !== !b.clave) return a.clave ? -1 : 1;
-      return a.nombre.localeCompare(b.nombre, 'es');
-    });
-    return lista;
+    marcas.sort(function (a, b) { return a.nombre.localeCompare(b.nombre, 'es'); });
+    return { marcas: marcas, sueltos: sueltos };
   }
 
   // ---------------------------------------------------------------- catalogo
@@ -616,9 +620,10 @@
     el.tituloMarcas.textContent = grupo ? grupo.nombre : 'Marcas';
     el.marcas.innerHTML = '';
     var frag = document.createDocumentFragment();
-    marcasDelGrupo().forEach(function (m) {
+    var mg = marcasDelGrupo();
+    mg.marcas.forEach(function (m) {
       var b = document.createElement('button');
-      b.className = 'marca-tile' + (m.clave ? '' : ' sin-marca');
+      b.className = 'marca-tile';
       b.dataset.marca = m.clave;
 
       var nom = document.createElement('div');
@@ -634,6 +639,8 @@
       b.addEventListener('click', function () { abrirMarca(m); });
       frag.appendChild(b);
     });
+    // Productos sin marca: sueltos al final, listos para tocar.
+    mg.sueltos.forEach(function (p) { frag.appendChild(tileProducto(p)); });
     el.marcas.appendChild(frag);
   }
 
@@ -715,6 +722,42 @@
     });
   }
 
+  /** Boton de un producto (grilla de productos y sueltos de la vista de marcas). */
+  function tileProducto(p) {
+    var b = document.createElement('button');
+    b.className = 'prod';
+
+    var arriba = document.createElement('div');
+    var nom = document.createElement('div');
+    nom.className = 'prod-nombre';
+    nom.textContent = p.nombre;
+    arriba.appendChild(nom);
+
+    var sub = [p.marca, p.sabor, p.contenido].filter(Boolean).join(' · ');
+    if (sub) {
+      var ma = document.createElement('div');
+      ma.className = 'prod-marca';
+      ma.textContent = sub;
+      arriba.appendChild(ma);
+    }
+
+    var pie = document.createElement('div');
+    pie.className = 'prod-pie';
+    var pr = document.createElement('span');
+    pr.className = 'prod-precio num';
+    pr.textContent = plata(p.precio_centavos);
+    var un = document.createElement('span');
+    un.className = 'prod-unidad';
+    un.textContent = p.tipo === 'peso' ? '/ kg' : 'c/u';
+    pie.appendChild(pr);
+    pie.appendChild(un);
+
+    b.appendChild(arriba);
+    b.appendChild(pie);
+    b.addEventListener('click', function () { agregarProducto(p); });
+    return b;
+  }
+
   function pintarGrilla() {
     var lista = productosVisibles();
     var grupo = grupoPorId(estado.grupoId);
@@ -738,40 +781,7 @@
     }
 
     var frag = document.createDocumentFragment();
-    lista.forEach(function (p) {
-      var b = document.createElement('button');
-      b.className = 'prod';
-
-      var arriba = document.createElement('div');
-      var nom = document.createElement('div');
-      nom.className = 'prod-nombre';
-      nom.textContent = p.nombre;
-      arriba.appendChild(nom);
-
-      var sub = [p.marca, p.sabor, p.contenido].filter(Boolean).join(' · ');
-      if (sub) {
-        var ma = document.createElement('div');
-        ma.className = 'prod-marca';
-        ma.textContent = sub;
-        arriba.appendChild(ma);
-      }
-
-      var pie = document.createElement('div');
-      pie.className = 'prod-pie';
-      var pr = document.createElement('span');
-      pr.className = 'prod-precio num';
-      pr.textContent = plata(p.precio_centavos);
-      var un = document.createElement('span');
-      un.className = 'prod-unidad';
-      un.textContent = p.tipo === 'peso' ? '/ kg' : 'c/u';
-      pie.appendChild(pr);
-      pie.appendChild(un);
-
-      b.appendChild(arriba);
-      b.appendChild(pie);
-      b.addEventListener('click', function () { agregarProducto(p); });
-      frag.appendChild(b);
-    });
+    lista.forEach(function (p) { frag.appendChild(tileProducto(p)); });
     el.grilla.appendChild(frag);
   }
 
