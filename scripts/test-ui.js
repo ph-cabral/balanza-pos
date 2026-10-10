@@ -103,16 +103,42 @@ function chequear(desc, cond, detalle) {
     console.log('\n2. Entrar a un grupo y volver');
     await pagina.locator('.grupo', { hasText: 'Quesos' }).first().click();
     await esperar(400);
-    chequear('abre los productos del grupo', await pagina.locator('#vistaProductos').isVisible());
-    chequear('el título es el del grupo',
-      (await pagina.locator('#tituloGrupo').textContent()).indexOf('Quesos') !== -1);
-    const enQuesos = await pagina.locator('.prod').count();
-    chequear('lista solo los productos del grupo', enQuesos > 0 && enQuesos < 16, enQuesos + ' productos');
-    await pagina.screenshot({ path: path.join(SALIDA, '2-productos-del-grupo.png') });
+    chequear('un grupo con varias marcas abre las marcas', await pagina.locator('#vistaMarcas').isVisible());
+    chequear('el título de las marcas es el del grupo',
+      (await pagina.locator('#tituloMarcas').textContent()).indexOf('Quesos') !== -1);
+    const marcasQuesos = await pagina.locator('.marca-nombre').allTextContents();
+    chequear('lista las marcas del grupo ordenadas',
+      marcasQuesos.join() === 'La Paulina,La Serenísima,Sancor,Santa Rosa', marcasQuesos.join());
+    chequear('cada marca muestra su cantidad',
+      (await pagina.locator('.marca-tile', { hasText: 'Sancor' }).textContent()).indexOf('2 productos') !== -1);
+    await pagina.screenshot({ path: path.join(SALIDA, '2-marcas-del-grupo.png') });
 
+    await pagina.locator('.marca-tile', { hasText: 'Sancor' }).click();
+    await esperar(300);
+    chequear('abre los productos de la marca', await pagina.locator('#vistaProductos').isVisible());
+    chequear('el título es grupo · marca',
+      (await pagina.locator('#tituloGrupo').textContent()).replace(/\s+/g, ' ').trim() === 'Quesos · Sancor');
+    const enSancor = await pagina.locator('.prod').count();
+    chequear('lista solo los productos de la marca', enSancor === 2, enSancor + ' productos');
+    chequear('ninguno es de otra marca',
+      (await pagina.locator('.prod-marca').allTextContents()).every((t) => t === 'Sancor'));
+    await pagina.screenshot({ path: path.join(SALIDA, '2-productos-de-la-marca.png') });
+
+    chequear('el botón dice Marcas', (await pagina.locator('#btnVolver').textContent()).indexOf('Marcas') !== -1);
     await pagina.locator('#btnVolver').click();
     await esperar(300);
-    chequear('el botón volver regresa a los grupos', await pagina.locator('#vistaGrupos').isVisible());
+    chequear('volver regresa a las marcas', await pagina.locator('#vistaMarcas').isVisible());
+    await pagina.locator('#btnVolverMarcas').click();
+    await esperar(300);
+    chequear('volver desde las marcas regresa a los grupos', await pagina.locator('#vistaGrupos').isVisible());
+
+    await pagina.locator('.grupo', { hasText: 'Jamones' }).first().click();
+    await esperar(300);
+    chequear('un grupo con una sola marca va directo a los productos', await pagina.locator('#vistaProductos').isVisible());
+    chequear('y el botón dice Grupos', (await pagina.locator('#btnVolver').textContent()).indexOf('Grupos') !== -1);
+    await pagina.locator('#btnVolver').click();
+    await esperar(300);
+    chequear('volver regresa a los grupos', await pagina.locator('#vistaGrupos').isVisible());
 
     console.log('\n3. Acomodar los grupos arrastrando');
     const ordenAntes = await pagina.locator('.grupo-nombre').allTextContents();
@@ -182,6 +208,8 @@ function chequear(desc, cond, detalle) {
       await pagina.evaluate(() => fetch('/api/balanza/simular', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gramos: 500 }) }));
       await estableEn('0,500');
       await pagina.locator('.grupo', { hasText: 'Quesos' }).first().click();
+      await esperar(300);
+      await pagina.locator('.marca-tile', { hasText: 'La Serenísima' }).click();
       await esperar(300);
       await pagina.locator('.prod', { hasText: 'Queso cremoso' }).first().click();
       await esperar(600);
@@ -325,6 +353,8 @@ function chequear(desc, cond, detalle) {
       });
       await esperar(1500);
       await pagina.locator('.grupo').first().click();
+      await esperar(300);
+      if (await pagina.locator('#vistaMarcas').isVisible()) await pagina.locator('.marca-tile').first().click();
       await esperar(300);
       await pagina.locator('.prod').first().click();
       await esperar(700);

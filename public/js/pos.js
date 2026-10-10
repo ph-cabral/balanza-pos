@@ -30,6 +30,10 @@
     balanza: { conectado: false, gramos: 0, estable: false, simulador: false },
     filtro: '',
     grupoId: null,
+    // Marca elegida dentro del grupo: null = todas (grupo con una sola marca o
+    // sin marcas), '' = productos sin marca, si no la marca en minusculas.
+    marcaSel: null,
+    marcaNombre: '',
     vista: 'grupos',
     ordenando: false,
     config: { venta: { avisarSiNoTara: true, umbralTaraKg: 0.02, segundosCarrito: 3 } },
@@ -71,6 +75,7 @@
     buscador: $('buscador'),
 
     vistaGrupos: $('vistaGrupos'),
+    vistaMarcas: $('vistaMarcas'),
     vistaProductos: $('vistaProductos'),
     vistaConfirma: $('vistaConfirma'),
 
@@ -78,6 +83,9 @@
     btnOrdenar: $('btnOrdenar'),
     columnas: $('columnas'),
     ayudaOrden: $('ayudaOrden'),
+    marcas: $('marcas'),
+    tituloMarcas: $('tituloMarcas'),
+    btnVolverMarcas: $('btnVolverMarcas'),
     btnVolver: $('btnVolver'),
     tituloGrupo: $('tituloGrupo'),
     grilla: $('grilla'),
@@ -450,11 +458,12 @@
 
   // ---------------------------------------------------------------- vistas
 
-  /** grupos | productos | confirma. Salir de "confirma" corta la vuelta automatica. */
+  /** grupos | marcas | productos | confirma. Salir de "confirma" corta la vuelta automatica. */
   function mostrarVista(cual) {
     if (cual !== 'confirma') cancelarReloj();
     estado.vista = cual;
     el.vistaGrupos.hidden = cual !== 'grupos';
+    el.vistaMarcas.hidden = cual !== 'marcas';
     el.vistaProductos.hidden = cual !== 'productos';
     el.vistaConfirma.hidden = cual !== 'confirma';
   }
@@ -465,15 +474,67 @@
       estado.filtro = '';
     }
     estado.grupoId = null;
+    estado.marcaSel = null;
     estado.itemConfirmado = null;
     modoOrdenar(false);
     mostrarVista('grupos');
   }
 
+  /**
+   * Un grupo con 2 o mas marcas abre primero las marcas; con una sola (o sin
+   * marcas) va directo a los productos, que seria un toque de mas.
+   */
   function abrirGrupo(id) {
     estado.grupoId = id;
+    estado.marcaSel = null;
+    if (marcasDelGrupo().length > 1) {
+      mostrarVista('marcas');
+      pintarMarcas();
+    } else {
+      mostrarVista('productos');
+      pintarGrilla();
+    }
+  }
+
+  function abrirMarca(m) {
+    estado.marcaSel = m.clave;
+    estado.marcaNombre = m.nombre;
     mostrarVista('productos');
     pintarGrilla();
+  }
+
+  /** Atras desde los productos: a las marcas si se vino de ahi, si no a los grupos. */
+  function volverDeProductos() {
+    if (!estado.filtro.trim() && estado.marcaSel !== null) {
+      estado.marcaSel = null;
+      mostrarVista('marcas');
+      pintarMarcas();
+    } else {
+      volverAGrupos();
+    }
+  }
+
+  function claveMarca(p) { return (p.marca || '').trim().toLowerCase(); }
+
+  /** Marcas del grupo abierto con su cuenta, ordenadas; "Sin marca" al final. Un solo recorrido. */
+  function marcasDelGrupo() {
+    var mapa = {}, lista = [];
+    for (var i = 0; i < estado.productos.length; i++) {
+      var p = estado.productos[i];
+      if (p.categoria_id !== estado.grupoId) continue;
+      var k = claveMarca(p);
+      var m = mapa[k];
+      if (!m) {
+        m = mapa[k] = { clave: k, nombre: k ? p.marca.trim() : 'Sin marca', productos: 0 };
+        lista.push(m);
+      }
+      m.productos++;
+    }
+    lista.sort(function (a, b) {
+      if (!a.clave !== !b.clave) return a.clave ? -1 : 1;
+      return a.nombre.localeCompare(b.nombre, 'es');
+    });
+    return lista;
   }
 
   // ---------------------------------------------------------------- catalogo
@@ -486,8 +547,13 @@
         estado.productos = d.productos;
         estado.grupos = d.categorias || [];
         // Si el grupo que estaba abierto se dio de baja, volvemos a la base.
-        if (estado.grupoId && !grupoPorId(estado.grupoId)) estado.grupoId = null;
+        if (estado.grupoId && !grupoPorId(estado.grupoId)) {
+          estado.grupoId = null;
+          estado.marcaSel = null;
+          if (estado.vista === 'marcas' || (estado.vista === 'productos' && !estado.filtro.trim())) mostrarVista('grupos');
+        }
         pintarGrupos();
+        if (estado.vista === 'marcas') pintarMarcas();
         if (estado.vista === 'productos') pintarGrilla();
       })
       .catch(function (e) { avisar('No se pudieron cargar los productos: ' + e.message, 'error'); });
@@ -543,6 +609,32 @@
       frag.appendChild(b);
     });
     el.grupos.appendChild(frag);
+  }
+
+  function pintarMarcas() {
+    var grupo = grupoPorId(estado.grupoId);
+    el.tituloMarcas.textContent = grupo ? grupo.nombre : 'Marcas';
+    el.marcas.innerHTML = '';
+    var frag = document.createDocumentFragment();
+    marcasDelGrupo().forEach(function (m) {
+      var b = document.createElement('button');
+      b.className = 'marca-tile' + (m.clave ? '' : ' sin-marca');
+      b.dataset.marca = m.clave;
+
+      var nom = document.createElement('div');
+      nom.className = 'marca-nombre';
+      nom.textContent = m.nombre;
+
+      var n = document.createElement('div');
+      n.className = 'marca-cuenta';
+      n.textContent = m.productos === 1 ? '1 producto' : m.productos + ' productos';
+
+      b.appendChild(nom);
+      b.appendChild(n);
+      b.addEventListener('click', function () { abrirMarca(m); });
+      frag.appendChild(b);
+    });
+    el.marcas.appendChild(frag);
   }
 
   var ICONO_CAMARA =
@@ -618,7 +710,8 @@
     var f = estado.filtro.toLowerCase().trim();
     return estado.productos.filter(function (p) {
       if (f) return (p.nombre + ' ' + p.marca + ' ' + p.categoria).toLowerCase().indexOf(f) !== -1;
-      return p.categoria_id === estado.grupoId;
+      if (p.categoria_id !== estado.grupoId) return false;
+      return estado.marcaSel === null || claveMarca(p) === estado.marcaSel;
     });
   }
 
@@ -626,9 +719,11 @@
     var lista = productosVisibles();
     var grupo = grupoPorId(estado.grupoId);
 
+    var conMarca = !estado.filtro.trim() && estado.marcaSel !== null;
     el.tituloGrupo.textContent = estado.filtro.trim()
       ? 'Resultados de “' + estado.filtro.trim() + '”'
-      : (grupo ? grupo.nombre : 'Productos');
+      : (grupo ? grupo.nombre : 'Productos') + (conMarca ? ' · ' + estado.marcaNombre : '');
+    el.btnVolver.textContent = conMarca ? '‹ Marcas' : '‹ Grupos';
 
     el.grilla.innerHTML = '';
 
@@ -1815,7 +1910,7 @@
     // Red de seguridad por si el navegador se quedo con un index.html viejo en
     // cache: mejor un mensaje claro que un error de JavaScript a mitad de camino.
     if (!el.grupos || !el.vistaConfirma || !el.btnSeguir || !el.selectorEstacion || !el.modalDescuentos ||
-        !el.picadaPanel || !el.accesoPicada) {
+        !el.picadaPanel || !el.accesoPicada || !el.vistaMarcas || !el.marcas) {
       avisar('La pantalla quedó vieja en la memoria del navegador.', 'error', {
         texto: 'Recargar',
         // Con un recargado normal el navegador puede volver a servir lo mismo de
@@ -1842,7 +1937,8 @@
       }
     });
 
-    el.btnVolver.addEventListener('click', volverAGrupos);
+    el.btnVolver.addEventListener('click', volverDeProductos);
+    el.btnVolverMarcas.addEventListener('click', volverAGrupos);
     el.btnSeguir.addEventListener('click', volverAGrupos);
     el.btnOrdenar.addEventListener('click', function () { modoOrdenar(!estado.ordenando); });
     if (el.columnas) {

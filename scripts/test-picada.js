@@ -85,10 +85,11 @@ function chequear(desc, cond, detalle) {
     await esperar(250);
   }
 
-  async function cargar(grupo, producto, gramos) {
+  async function cargar(grupo, producto, gramos, marca) {
     await simular(0); await esperarPeso(0);
     await simular(gramos); await esperarPeso(gramos);
     await pagina.locator('.grupo', { hasText: grupo }).first().click();
+    if (marca) await pagina.locator('.marca-tile', { hasText: marca }).first().click();
     await pagina.locator('.prod', { hasText: producto }).first().click();
     await pagina.waitForFunction(() => !document.querySelector('#vistaConfirma').hidden ||
       document.querySelector('#hoja').classList.contains('abierta'), null, { timeout: 10000 });
@@ -118,7 +119,7 @@ function chequear(desc, cond, detalle) {
     chequear('total en confirmación: 3.200 + merma 250', (await texto('#confirmaTotal')).includes('3.450'), await texto('#confirmaTotal'));
     await esperarGrupos();
 
-    await cargar('Embutidos', 'Mortadela', 500);
+    await cargar('Embutidos', 'Mortadela', 500, 'Paladini');
     await esperarGrupos();
 
     const filas = await pagina.locator('#picadaItems .item-wrap').count();

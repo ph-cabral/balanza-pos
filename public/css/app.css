@@ -326,6 +326,38 @@ input  { font-family: inherit; font-size: inherit; }
   50%      { transform: rotate(.5deg); }
 }
 
+/* ---------- Marcas de un grupo ---------- */
+
+.marcas {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px;
+  padding: 0 20px 20px;
+  align-content: start;
+  -webkit-overflow-scrolling: touch;
+}
+
+.marca-tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 4px;
+  min-height: 96px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-left: 4px solid var(--info);
+  border-radius: var(--radio);
+  text-align: left;
+  transition: transform .06s, border-color .12s;
+}
+.marca-tile:active { transform: scale(.97); border-color: var(--acento); }
+.marca-tile.sin-marca { border-left-color: var(--texto-tenue); }
+.marca-nombre { font-size: 20px; font-weight: 700; line-height: 1.2; overflow-wrap: break-word; }
+.marca-cuenta { font-size: 13px; color: var(--texto-tenue); font-weight: 600; }
+
 /* ---------- Grilla de productos ---------- */
 
 .grilla {
@@ -862,7 +894,10 @@ input  { font-family: inherit; font-size: inherit; }
   .peso-acciones { margin-left: auto; }
   .barra-busqueda { padding: 12px 16px 8px; }
   .vista-cab { padding: 4px 16px 10px; }
-  .grupos, .grilla { padding: 0 16px 16px; }
+  .grupos, .grilla, .marcas { padding: 0 16px 16px; }
+  .marcas { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .marca-tile { min-height: 80px; padding: 13px; }
+  .marca-nombre { font-size: 17px; }
 
   .peso-numero { font-size: 52px; }
   .total-valor { font-size: 32px; }
@@ -1056,7 +1091,7 @@ input  { font-family: inherit; font-size: inherit; }
 /* Deslizar de derecha a izquierda entra al modo picada (y al reves sale): el
    gesto horizontal lo toma la pagina, el vertical sigue siendo scroll. Va en
    cada contenedor con scroll: el navegador no mira mas arriba de ellos. */
-.izquierda, .grupos, .grilla, .confirma-lista { touch-action: pan-y; }
+.izquierda, .grupos, .marcas, .grilla, .confirma-lista { touch-action: pan-y; }
 
 .acceso.activo { border-color: var(--picada); color: var(--picada); }
 

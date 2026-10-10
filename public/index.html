@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0f1419">
 <title>Balanza POS</title>
-<link rel="stylesheet" href="/css/app.css?v=12">
+<link rel="stylesheet" href="/css/app.css?v=13">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
 </head>
 <body>
@@ -98,7 +98,16 @@
         <div class="grupos" id="grupos"></div>
       </section>
 
-      <!-- ---------- Productos de un grupo / resultados de búsqueda ---------- -->
+      <!-- ---------- Marcas de un grupo ---------- -->
+      <section class="vista" id="vistaMarcas" hidden>
+        <div class="vista-cab">
+          <button class="btn chico volver" id="btnVolverMarcas">‹ Grupos</button>
+          <div class="vista-titulo" id="tituloMarcas">—</div>
+        </div>
+        <div class="marcas" id="marcas"></div>
+      </section>
+
+      <!-- ---------- Productos de un grupo (o de una marca) / resultados de búsqueda ---------- -->
       <section class="vista" id="vistaProductos" hidden>
         <div class="vista-cab">
           <button class="btn chico volver" id="btnVolver">‹ Grupos</button>
@@ -271,6 +280,6 @@
 
 <script src="/js/scanner.js?v=7"></script>
 <script src="/js/camara.js?v=7"></script>
-<script src="/js/pos.js?v=11"></script>
+<script src="/js/pos.js?v=12"></script>
 </body>
 </html>
