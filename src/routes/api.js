@@ -13,6 +13,7 @@ const crearCobrosQr = require('../cobros-qr');
 
 module.exports = function crearApi({ estaciones, guardarConfig, config, sheets, gastos, sheetsImportar, mercadopago }) {
   const router = express.Router();
+  db.configurarMedios(config && config.mediosPago);
 
   const ok = (res, data) => res.json({ ok: true, ...data });
   const fallo = (res, code, mensaje) => res.status(code).json({ ok: false, error: mensaje });
@@ -279,6 +280,8 @@ module.exports = function crearApi({ estaciones, guardarConfig, config, sheets, 
         sheets: aSheets,
         estacion: est ? { id: est.id, nombre: est.nombre } : null,
         descuento_id: req.body.descuento_id || null,
+        // Por QR solo se guarda al acreditarse (cobros-qr): aca solo efectivo o tarjeta.
+        medio_pago: req.body.medio_pago === 'tarjeta' ? 'tarjeta' : '',
       });
       ok(res, { venta });
       if (aSheets) sheets.avisarVentaNueva();
@@ -289,6 +292,9 @@ module.exports = function crearApi({ estaciones, guardarConfig, config, sheets, 
 
   // --- Cobro con QR fijo de Mercado Pago ----------------------------------
   router.use('/cobros-qr', crearCobrosQr({ mp: mercadopago, estaciones, sheets }));
+
+  // --- Medios de pago: porcentaje sobre el precio de efectivo (config.mediosPago) ---
+  router.get('/medios-pago', (_req, res) => ok(res, { medios: db.listarMedios() }));
 
   // --- Descuentos (lista corta que se elige desde el POS) ------------------
   router.get('/descuentos', (_req, res) => ok(res, { descuentos: db.listarDescuentos() }));

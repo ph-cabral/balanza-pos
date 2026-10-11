@@ -67,6 +67,7 @@ function crearMP() {
   cfg.http.port = PUERTO;
   for (const b of cfg.balanzas) b.simulador = true;
   cfg.sheets = { habilitado: false, importar: false };
+  cfg.mediosPago = { qr: 0, tarjeta: 0 };
   cfg.mercadopago = { habilitado: true, accessToken: 'T', externalPosId: 'CAJA1', expiracionMinutos: 5, consultaSegundos: 2 };
   const ruta = path.join(dir, 'config.json');
   fs.writeFileSync(ruta, JSON.stringify(cfg));

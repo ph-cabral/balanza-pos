@@ -1827,9 +1827,13 @@
         }).join('\n') +
         '\n-----------------------------------------------\n' +
         (v.descuento_centavos
-          ? 'Subtotal'.padEnd(62) + plata(v.total_centavos + v.descuento_centavos).padStart(14) + '\n' +
+          ? 'Subtotal'.padEnd(62) + plata(v.total_centavos - (v.ajuste_medio_centavos || 0) + v.descuento_centavos).padStart(14) + '\n' +
             ('Descuento ' + (v.descuento_nombre || '')).padEnd(62).slice(0, 62) +
             ('-' + plata(v.descuento_centavos)).padStart(14) + '\n'
+          : '') +
+        (v.ajuste_medio_centavos
+          ? ('Medio de pago ' + (v.medio_pago === 'qr_mp' ? 'QR' : v.medio_pago === 'tarjeta' ? 'Tarjeta' : '')).padEnd(62).slice(0, 62) +
+            ('+' + plata(v.ajuste_medio_centavos)).padStart(14) + '\n'
           : '') +
         'TOTAL'.padEnd(62) + plata(v.total_centavos).padStart(14);
       caja.scrollIntoView({ behavior: 'smooth', block: 'nearest' });

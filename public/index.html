@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0f1419">
 <title>Balanza POS</title>
-<link rel="stylesheet" href="/css/app.css?v=19">
+<link rel="stylesheet" href="/css/app.css?v=21">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
 </head>
 <body>
@@ -194,6 +194,8 @@
         <span class="total-label">TOTAL</span>
         <span class="total-valor num" id="total">$ 0,00</span>
       </div>
+      <!-- Lo que sale cada medio de pago: lista = tarjeta; efectivo/QR llevan descuento sobre esa lista -->
+      <div class="medios-resumen" id="mediosResumen" hidden></div>
       <button class="btn-cobrar" id="btnCobrar" disabled>
         <!-- Caja registradora -->
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -207,6 +209,13 @@
         </svg>
         <span id="btnCobrarTexto">Cerrar venta</span>
       </button>
+      <button class="btn-tarjeta" id="btnTarjeta" disabled hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/>
+        </svg>
+        <span id="btnTarjetaTexto">Tarjeta</span>
+      </button>
       <!-- QR de Mercado Pago: la orden se crea sola con el carrito (solo si mercadopago esta habilitado) -->
       <div class="qr-banda" id="qrBanda" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -218,6 +227,7 @@
           <div class="qr-monto num" id="qrMonto"></div>
           <div class="qr-estado" id="qrEstado"></div>
         </div>
+        <button type="button" class="qr-boton" id="qrBoton">Cancelar QR</button>
       </div>
     </div>
 
@@ -303,6 +313,6 @@
 
 <script src="/js/scanner.js?v=7"></script>
 <script src="/js/camara.js?v=8"></script>
-<script src="/js/pos.js?v=18"></script>
+<script src="/js/pos.js?v=21"></script>
 </body>
 </html>

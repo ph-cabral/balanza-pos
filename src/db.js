@@ -406,6 +406,8 @@ CREATE INDEX IF NOT EXISTS ix_cobros_qr_pend ON cobros_qr(pos_id) WHERE estado =
   const cols = db.prepare(`PRAGMA table_info(ventas)`).all().map((c) => c.name);
   // '' = sin dato (ventas anteriores); 'qr_mp' = cobrada por QR de Mercado Pago.
   if (!cols.includes('medio_pago')) db.exec(`ALTER TABLE ventas ADD COLUMN medio_pago TEXT NOT NULL DEFAULT ''`);
+  // Diferencia (centavos) entre lo cobrado y el neto del carrito por el medio de pago: se suma al neto.
+  if (!cols.includes('ajuste_medio_centavos')) db.exec(`ALTER TABLE ventas ADD COLUMN ajuste_medio_centavos INTEGER NOT NULL DEFAULT 0`);
 }
 // Pendientes viejos (el POS se cerro en medio del cobro): la orden ya vencio en MP.
 db.prepare(`UPDATE cobros_qr SET estado = 'vencido'
@@ -552,8 +554,8 @@ const S = {
   `),
 
   insertarVenta: db.prepare(`
-    INSERT INTO ventas (total_centavos, items_count, estacion_id, estacion, descuento_nombre, descuento_centavos, medio_pago)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO ventas (total_centavos, items_count, estacion_id, estacion, descuento_nombre, descuento_centavos, medio_pago, ajuste_medio_centavos)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `),
 
   cobroQrInsertar: db.prepare(`
@@ -579,13 +581,13 @@ const S = {
   `),
 
   ventasRecientes: db.prepare(`
-    SELECT id, fecha, total_centavos, items_count, arca_estado, estacion_id, estacion, origen
+    SELECT id, fecha, total_centavos, items_count, arca_estado, estacion_id, estacion, origen, medio_pago
     FROM ventas ORDER BY fecha DESC, id DESC LIMIT ?
   `),
 
   ventaPorId: db.prepare(`
     SELECT id, fecha, total_centavos, items_count, estado, arca_estado, arca_cae, estacion_id, estacion, origen,
-           descuento_nombre, descuento_centavos, medio_pago
+           descuento_nombre, descuento_centavos, medio_pago, ajuste_medio_centavos
     FROM ventas WHERE id = ?
   `),
 
@@ -794,6 +796,45 @@ function normalizarProducto(p) {
   };
 }
 
+// --- Medios de pago -----------------------------------------------------------
+// Los precios del catalogo son los de efectivo. Cada medio suma un porcentaje sobre
+// el neto del carrito (descuento ya aplicado), redondeado SIEMPRE para arriba a
+// multiplo de $100 (igual que los pesables): $40.000 -> QR 1 % $40.400, tarjeta
+// 10,5 % $44.200. Lista = el medio mas caro; efectivo/QR se muestran como descuento
+// sobre esa lista. Los porcentajes salen de config.json (mediosPago).
+const MEDIOS_BASE = [
+  { clave: 'efectivo', pago: '', nombre: 'Efectivo', pct: 0 },
+  { clave: 'qr', pago: 'qr_mp', nombre: 'QR Mercado Pago', pct: 1 },
+  { clave: 'tarjeta', pago: 'tarjeta', nombre: 'Tarjeta', pct: 10.5 },
+];
+let medios = MEDIOS_BASE.map((m) => ({ ...m, bp: Math.round(m.pct * 100) }));
+
+function configurarMedios(cfg) {
+  const c = cfg && typeof cfg === 'object' ? cfg : {};
+  medios = MEDIOS_BASE.map((m) => {
+    const v = c[m.clave];
+    const pct = v === undefined || v === null || v === '' || !Number.isFinite(Number(v))
+      ? m.pct
+      : Math.min(100, Math.max(0, Number(v)));
+    return { ...m, pct, bp: Math.round(pct * 100) };
+  });
+  return medios;
+}
+
+function medioPorPago(pago) {
+  const p = (pago || '').toString();
+  const m = medios.find((x) => x.pago === p);
+  if (!m) throw new Error('Medio de pago invalido');
+  return m;
+}
+
+/** neto en centavos + porcentaje en puntos base (1 % = 100) -> total redondeado para arriba a $100. */
+function totalConMedio(netoCentavos, bp) {
+  if (netoCentavos <= 0 || bp <= 0) return netoCentavos;
+  const x = netoCentavos * (10000 + bp);
+  return Math.floor((x + 99999999) / 100000000) * 10000;
+}
+
 /** Valida y valoriza los items de una venta con los precios vigentes. Sin escribir. */
 function prepararVenta(items, opciones = {}) {
   if (!Array.isArray(items) || items.length === 0) {
@@ -980,13 +1021,20 @@ const api = {
   /** Total que tendria una venta (sin guardarla): misma cuenta que guardarVenta. */
   totalVenta: (items, opciones = {}) => {
     const { bruto, descMonto, total } = prepararVenta(items, opciones);
-    return { bruto_centavos: bruto, descuento_centavos: descMonto, total_centavos: total };
+    const total_centavos = totalConMedio(total, medioPorPago(opciones.medio_pago).bp);
+    return {
+      bruto_centavos: bruto, descuento_centavos: descMonto, neto_centavos: total,
+      ajuste_medio_centavos: total_centavos - total, total_centavos,
+    };
   },
 
   guardarVenta: db.transaction((items, opciones = {}) => {
-    const { preparados, descNombre, descMonto, total } = prepararVenta(items, opciones);
+    const { preparados, descNombre, descMonto, total: neto } = prepararVenta(items, opciones);
+    const medio = medioPorPago(opciones.medio_pago);
+    const total = totalConMedio(neto, medio.bp);
+    const ajuste = total - neto;
     const est = opciones.estacion || null;
-    const info = S.insertarVenta.run(total, preparados.length, est ? est.id : null, est ? est.nombre : '', descNombre, descMonto, opciones.medio_pago || '');
+    const info = S.insertarVenta.run(total, preparados.length, est ? est.id : null, est ? est.nombre : '', descNombre, descMonto, medio.pago, ajuste);
     const ventaId = info.lastInsertRowid;
 
     for (const it of preparados) {
@@ -998,8 +1046,13 @@ const api = {
     return {
       id: ventaId, total_centavos: total, items: preparados.length, estacion: est ? est.nombre : '',
       descuento_nombre: descNombre, descuento_centavos: descMonto,
+      medio_pago: medio.pago, ajuste_medio_centavos: ajuste,
     };
   }),
+
+  // --- Medios de pago ---
+  configurarMedios,
+  listarMedios: () => medios.map((m) => ({ clave: m.clave, pago: m.pago, nombre: m.nombre, porcentaje: m.pct, bp: m.bp })),
 
   // --- Cobros por QR de Mercado Pago ---
   crearCobroQr: ({ id, pos_id, total_centavos, payload }) =>

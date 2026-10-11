@@ -22,10 +22,11 @@
     "limpiar-ventas": "node scripts/limpiar-ventas.js",
     "test-importar-sheets": "node scripts/test-importar-sheets.js",
     "test-camara": "node scripts/test-camara.js",
+    "test-medios": "node scripts/test-medios.js",
     "test-qr": "node scripts/test-qr.js",
     "test-qr-ui": "node scripts/test-qr-ui.js",
     "mp-configurar": "node scripts/mp-configurar.js",
-    "test": "node scripts/test-humo.js && node scripts/test-grupos.js && node scripts/test-estaciones.js && node scripts/test-deploy.js && node scripts/test-gastos.js && node scripts/test-importar-sheets.js && node scripts/test-camara.js && node scripts/test-qr.js"
+    "test": "node scripts/test-humo.js && node scripts/test-grupos.js && node scripts/test-estaciones.js && node scripts/test-deploy.js && node scripts/test-gastos.js && node scripts/test-importar-sheets.js && node scripts/test-camara.js && node scripts/test-medios.js && node scripts/test-qr.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",

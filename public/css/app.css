@@ -630,6 +630,35 @@ input  { font-family: inherit; font-size: inherit; }
 .btn-cobrar:disabled { background: var(--panel-alto); color: var(--texto-tenue); }
 .btn-cobrar svg { width: 28px; height: 28px; }
 
+/* ---------- Medios de pago (lista / efectivo / QR / tarjeta) ---------- */
+
+.medios-resumen { margin: -4px 0 12px; font-size: 14px; color: var(--texto-medio); }
+.medios-resumen[hidden] { display: none; }
+.medios-fila { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
+.medios-fila .medios-desc { color: var(--acento-fuerte); font-weight: 600; }
+.medios-fila.lista { color: var(--texto); font-weight: 600; }
+
+.btn-tarjeta {
+  width: 100%;
+  height: 56px;
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--panel-alto);
+  border: 2px solid var(--borde);
+  border-radius: var(--radio);
+  color: var(--texto);
+  font-size: 18px;
+  font-weight: 700;
+  transition: transform .06s, opacity .12s;
+}
+.btn-tarjeta[hidden] { display: none; }
+.btn-tarjeta:active { transform: scale(.985); }
+.btn-tarjeta:disabled { color: var(--texto-tenue); }
+.btn-tarjeta svg { width: 26px; height: 26px; }
+
 /* ---------- Cobro con QR (Mercado Pago) ---------- */
 
 .qr-banda {
@@ -645,7 +674,20 @@ input  { font-family: inherit; font-size: inherit; }
 }
 .qr-banda[hidden] { display: none; }
 .qr-banda svg { width: 28px; height: 28px; flex: none; color: var(--info); }
-.qr-banda-txt { min-width: 0; }
+.qr-banda-txt { min-width: 0; flex: 1; }
+.qr-boton {
+  flex: none;
+  padding: 10px 16px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--texto);
+  background: var(--panel);
+  border: 2px solid var(--info);
+  border-radius: var(--radio);
+  cursor: pointer;
+}
+.qr-boton:active { filter: brightness(1.2); }
 .qr-monto { font-size: 22px; font-weight: 700; letter-spacing: -.5px; }
 .qr-estado { font-size: 15px; font-weight: 600; color: var(--info); }
 .qr-estado.pagado { color: var(--acento-fuerte); }

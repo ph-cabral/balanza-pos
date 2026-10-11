@@ -57,6 +57,9 @@ jobs:
       - name: Estaciones
         run: npm run test-estaciones
 
+      - name: Medios de pago (recargo por QR y tarjeta)
+        run: npm run test-medios
+
       - name: Cobro con QR de Mercado Pago (API, MP simulado)
         run: npm run test-qr
 

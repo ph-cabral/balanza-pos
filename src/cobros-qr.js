@@ -88,7 +88,7 @@ module.exports = function crearCobrosQr({ mp, estaciones, sheets }) {
       const opciones = { descuento_id: req.body.descuento_id || null };
       let total;
       try {
-        total = db.totalVenta(items, opciones).total_centavos; // valida items y descuento
+        total = db.totalVenta(items, { ...opciones, medio_pago: 'qr_mp' }).total_centavos; // valida items y descuento; incluye el % del QR
       } catch (e) {
         return fallo(res, 400, e.message);
       }
@@ -101,10 +101,20 @@ module.exports = function crearCobrosQr({ mp, estaciones, sheets }) {
       // Con `reemplaza` (el POS actualiza su propia orden al cambiar el carrito) se
       // cancela la anterior; si justo se pagó, se devuelve ese cobro y no se crea otro.
       const previo = db.cobroQrPendienteDeCaja(caja);
+      let reemplazado = false;
       if (previo) {
-        if (req.body.reemplaza && req.body.reemplaza === previo.id) {
+        let propio = !!req.body.reemplaza && req.body.reemplaza === previo.id;
+        if (!propio && est) {
+          // Orden huerfana de esta misma estacion (la pantalla perdio la respuesta o se recargo): se reemplaza.
+          try {
+            const p = JSON.parse(db.cobroQr(previo.id).payload || '{}');
+            propio = !!(p.estacion && p.estacion.id === est.id);
+          } catch (_) { /* payload ilegible: se trata como ajena */ }
+        }
+        if (propio) {
           const r = await cancelar(db.cobroQr(previo.id)); // fila completa (con order_id)
           if (r.cobro.estado === 'pagado') return ok(res, { cobro: resumen(r.cobro), venta: r.venta });
+          reemplazado = true;
         } else {
           const r = await refrescar(previo.id);
           if (r && r.cobro.estado === 'pendiente') {
@@ -118,7 +128,17 @@ module.exports = function crearCobrosQr({ mp, estaciones, sheets }) {
         id, pos_id: caja, total_centavos: total,
         payload: { items, estacion: est ? { id: est.id, nombre: est.nombre } : null, descuento_id: opciones.descuento_id },
       });
-      const orden = await mp.crearOrden({ referencia: id, totalCentavos: total, descripcion: 'Venta fiambrería', posId: caja });
+      // Recien cancelada la orden anterior, MP puede tardar un instante en liberar la caja (409): se reintenta.
+      let orden;
+      for (let intento = 0; ; intento++) {
+        try {
+          orden = await mp.crearOrden({ referencia: id, totalCentavos: total, descripcion: 'Venta fiambrería', posId: caja });
+          break;
+        } catch (e) {
+          if (!(reemplazado && e.status === 409 && intento < 3)) throw e;
+          await new Promise((r) => setTimeout(r, 600 * (intento + 1)));
+        }
+      }
       db.cobroQrOrden(id, orden.id);
       ok(res, { cobro: resumen(db.cobroQr(id), { minutos: orden.minutos }) });
     } catch (e) {

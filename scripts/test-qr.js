@@ -84,7 +84,7 @@ function crearMP() {
   for (const b of cfg.balanzas) b.simulador = true;
   cfg.sheets = { habilitado: false, importar: false };
   const ruta = path.join(dir, 'config.json');
-  const escribirCfg = (mpCfg) => { cfg.mercadopago = mpCfg; fs.writeFileSync(ruta, JSON.stringify(cfg)); };
+  const escribirCfg = (mpCfg) => { cfg.mercadopago = mpCfg; cfg.mediosPago = { qr: 0, tarjeta: 0 }; fs.writeFileSync(ruta, JSON.stringify(cfg)); };
   const env = { ...process.env, POS_CONFIG: ruta, POS_DATA: dir, POS_CONFIG_COMUN: path.join(dir, 'no-existe.json'), POS_MP_BASE: `http://localhost:${mpPuerto}`, POS_SIN_SHEETS: '1' };
 
   let servidor = null;
@@ -177,7 +177,7 @@ function crearMP() {
     const itemsB = [{ producto_id: unidad.id, tipo: 'unidad', cantidad: 3 }];
     r = await post('/api/cobros-qr', { items: itemsA, estacion: 'e1' });
     const idA = r.cobro.id;
-    let rr = await post('/api/cobros-qr', { items: itemsB, estacion: 'e1', reemplaza: 'ajeno' });
+    let rr = await post('/api/cobros-qr', { items: itemsB, estacion: 'otra', reemplaza: 'ajeno' });
     chequear('reemplaza con un id que no es el de la caja -> 409', rr.http === 409, rr.error);
     rr = await post('/api/cobros-qr', { items: itemsB, estacion: 'e1', reemplaza: idA });
     const idB = rr.cobro && rr.cobro.id;

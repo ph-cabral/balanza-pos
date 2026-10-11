@@ -45,6 +45,10 @@
     "importar": true,
     "importarSegundos": 600
   },
+  "mediosPago": {
+    "qr": 1,
+    "tarjeta": 10.5
+  },
   "mercadopago": {
     "habilitado": false,
     "accessToken": "",
