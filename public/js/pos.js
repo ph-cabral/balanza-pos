@@ -42,10 +42,14 @@
     pasoPorCero: true,
     ultimoPesoCapturado: 0,
     cerrando: false,
-    // Cobro en curso con el QR fijo de Mercado Pago ({id, total}) y si esta habilitado.
+    // QR fijo de Mercado Pago: orden viva para el carrito actual ({id, total, firma, timer}).
     qr: null,
     qrDisponible: false,
     qrConsultaMs: 3000,
+    qrSync: null,        // timer que espera a que el carrito quede quieto
+    qrOcupado: false,    // hay una orden creandose
+    qrRepetir: false,
+    qrPausaFirma: null,  // carrito que no se vuelve a cobrar por QR (ya hubo un pago por otro)
     uid: 1,
     reloj: null,
     tic: null,
@@ -111,11 +115,9 @@
     total: $('total'),
     btnCobrar: $('btnCobrar'),
     btnCobrarTexto: $('btnCobrarTexto'),
-    btnCobrarQr: $('btnCobrarQr'),
-    modalQr: $('modalQr'),
+    qrBanda: $('qrBanda'),
     qrMonto: $('qrMonto'),
     qrEstado: $('qrEstado'),
-    qrCancelar: $('qrCancelar'),
     avisos: $('avisos'),
 
     hoja: $('hoja'),
@@ -930,7 +932,6 @@
   }
 
   function agregarProducto(p) {
-    if (estado.qr) { avisar('Hay un cobro por QR en curso: terminalo o cancelalo primero', 'atencion'); return; }
     if (p.tipo === 'unidad') return agregarUnidad(p);
     return agregarPorPeso(p);
   }
@@ -1105,11 +1106,11 @@
         '<div>Poné algo en la balanza<br>y elegí el producto</div></div>';
       el.total.textContent = plata(0);
       el.btnCobrar.disabled = true;
-      el.btnCobrarQr.disabled = true;
       estado.ultimoPesoCapturado = 0;
       estado.descuento = null;
       pintarDescuento();
       pintarCabecera();
+      programarQr();
       return;
     }
 
@@ -1121,7 +1122,7 @@
     el.total.textContent = plata(totalCarrito());
     pintarCabecera();
     el.btnCobrar.disabled = estado.cerrando;
-    el.btnCobrarQr.disabled = estado.cerrando;
+    programarQr();
   }
 
   /** Renglon del carrito o de la picada. detalle: reemplaza al de siempre. */
@@ -1887,7 +1888,24 @@
     cerrarHoja();
   }
 
+  /** Cierre en efectivo/otros. Si hay una orden de QR viva, se baja antes (puede haberse pagado justo). */
   function cerrarVenta() {
+    if (!estado.carrito.length || estado.cerrando) return;
+    if (estado.qr || estado.qrOcupado) {
+      estado.cerrando = true;
+      el.btnCobrar.disabled = true;
+      if (estado.qrOcupado) avisar('Se está preparando el QR: probá de nuevo en un segundo', 'atencion');
+      bajarQr().then(function (seguir) {
+        estado.cerrando = false;
+        if (seguir) cerrarVentaDirecta();
+        else el.btnCobrar.disabled = estado.carrito.length === 0;
+      });
+      return;
+    }
+    cerrarVentaDirecta();
+  }
+
+  function cerrarVentaDirecta() {
     if (!estado.carrito.length || estado.cerrando) return;
 
     estado.cerrando = true;
@@ -1930,8 +1948,14 @@
   }
 
   // ------------------------------------------------------------- cobro por QR
+  //
+  // Automatico: con el carrito armado, la orden en la caja de Mercado Pago se crea sola
+  // (cuando el carrito deja de cambiar) y se mantiene al dia. El cliente escanea el QR fijo,
+  // ve el monto y la venta se guarda sola al acreditarse. Sin boton.
 
   var CLAVE_QR = 'pos.cobroQr';
+  var QR_ESPERA_MS = 1200;      // el carrito tiene que quedar quieto antes de pedir la orden
+  var QR_REINTENTO_MS = 15000;  // si MP falla o la caja esta ocupada
 
   function guardarCobroQr(id) {
     try { if (id) localStorage.setItem(CLAVE_QR, id); else localStorage.removeItem(CLAVE_QR); } catch (e) { /* sin storage */ }
@@ -1940,16 +1964,97 @@
   function estadoQr(texto, clase) {
     el.qrEstado.textContent = texto;
     el.qrEstado.className = 'qr-estado ' + (clase || '');
+    el.qrBanda.hidden = false;
+  }
+
+  function mostrarQr(q) {
+    el.qrMonto.textContent = plata(q.total);
+    estadoQr('Esperando el pago', 'espera');
   }
 
   function liberarQr() {
     if (estado.qr && estado.qr.timer) clearTimeout(estado.qr.timer);
     estado.qr = null;
-    estado.cerrando = false;
     guardarCobroQr(null);
-    el.modalQr.hidden = true;
-    el.qrCancelar.disabled = false;
-    pintarCarrito();
+    el.qrBanda.hidden = true;
+  }
+
+  /** Identifica el contenido del carrito: si no cambia, la orden viva sigue valiendo. */
+  function firmaCarrito() {
+    if (!estado.carrito.length) return '';
+    return JSON.stringify([
+      estado.carrito.map(function (i) { return [i.producto_id, i.nombre, i.marca, i.tipo, i.cantidad, i.precio_centavos]; }),
+      estado.descuento ? estado.descuento.id : null,
+    ]);
+  }
+
+  /** Se llama cada vez que se pinta el carrito: agenda la sincronizacion si algo cambio. */
+  function programarQr(ms) {
+    if (!estado.qrDisponible) return;
+    var firma = firmaCarrito();
+    if (!firma) estado.qrPausaFirma = null;
+    if (firma && firma === estado.qrPausaFirma) return;
+    if (ms === undefined && ((estado.qr && estado.qr.firma) || '') === firma) return; // nada que hacer
+    if (estado.qrSync) clearTimeout(estado.qrSync);
+    estado.qrSync = setTimeout(sincronizarQr, ms === undefined ? QR_ESPERA_MS : ms);
+  }
+
+  function sincronizarQr() {
+    estado.qrSync = null;
+    if (!estado.qrDisponible) return;
+    if (estado.qrOcupado) { estado.qrRepetir = true; return; }
+    var firma = firmaCarrito();
+    var q = estado.qr;
+    if (firma && firma === estado.qrPausaFirma) return;
+    if (q && q.firma === firma) return;
+    if (!firma) { // carrito vacio: se baja la orden
+      if (q && q.firma) bajarQr();
+      else if (!q) el.qrBanda.hidden = true;
+      return;
+    }
+    crearQr(q);
+  }
+
+  function crearQr(previa) {
+    var firma = firmaCarrito();
+    var items = estado.carrito.map(function (i) {
+      return { producto_id: i.producto_id, nombre: i.nombre, marca: i.marca, tipo: i.tipo, cantidad: i.cantidad, precio_centavos: i.precio_centavos };
+    });
+    estado.qrOcupado = true;
+    if (previa && previa.timer) { clearTimeout(previa.timer); previa.timer = null; }
+    estadoQr('Preparando el QR', 'espera');
+
+    fetch('/api/cobros-qr', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: items,
+        estacion: estado.estacion,
+        descuento_id: estado.descuento ? estado.descuento.id : null,
+        reemplaza: previa ? previa.id : null,
+      }),
+    })
+      .then(function (r) { return r.json().then(function (d) { d.http = r.status; return d; }); })
+      .then(function (d) {
+        if (!d.ok) { var err = new Error(d.error); err.http = d.http; throw err; }
+        if (d.cobro.estado === 'pagado') { resolverQr(d, previa); return; } // la anterior se pagó justo antes
+        var q = { id: d.cobro.id, total: d.cobro.total_centavos, firma: firma, timer: null };
+        estado.qr = q;
+        guardarCobroQr(q.id);
+        mostrarQr(q);
+        q.timer = setTimeout(consultarQr, estado.qrConsultaMs);
+      })
+      .catch(function (e) {
+        if (previa && estado.qr === previa) previa.timer = setTimeout(consultarQr, estado.qrConsultaMs);
+        else if (!previa) el.qrMonto.textContent = '';
+        estadoQr('QR no disponible: ' + e.message, 'fallo');
+        // 400 = el carrito no se puede cobrar así (total cero, etc.): espera a que cambie.
+        if (e.http !== 400) programarQr(QR_REINTENTO_MS);
+      })
+      .then(function () {
+        estado.qrOcupado = false;
+        if (estado.qrRepetir) { estado.qrRepetir = false; programarQr(0); }
+      });
   }
 
   /** Pregunta al servidor (que pregunta a Mercado Pago) cada pocos segundos. */
@@ -1959,13 +2064,13 @@
     fetch('/api/cobros-qr/' + encodeURIComponent(q.id))
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        if (estado.qr !== q) return; // se canceló mientras esperábamos
+        if (estado.qr !== q) return; // se reemplazó o bajó mientras esperábamos
         if (!d.ok) throw new Error(d.error);
         resolverQr(d, q);
       })
-      .catch(function (e) {
+      .catch(function () {
         if (estado.qr !== q) return;
-        estadoQr('Sin conexión con el POS, reintentando…', 'espera'); // el cobro sigue vivo en el servidor
+        estadoQr('Sin conexión con el POS, reintentando…', 'espera'); // la orden sigue viva en el servidor
         q.timer = setTimeout(consultarQr, estado.qrConsultaMs);
       });
   }
@@ -1974,10 +2079,18 @@
     var estadoCobro = d.cobro.estado;
     if (estadoCobro === 'pagado') {
       var venta = d.venta || { id: d.cobro.venta_id, total_centavos: d.cobro.total_centavos };
-      var eraMia = !!q.carritoMio;
+      var firmaActual = firmaCarrito();
+      var igual = !!(q && q.firma) && q.firma === firmaActual;
       liberarQr();
-      if (eraMia) ventaCobrada(venta, ' · QR');
-      else avisar('Venta #' + venta.id + ' cobrada por QR · ' + plata(venta.total_centavos), 'ok');
+      if (igual) {
+        ventaCobrada(venta, ' · QR');
+      } else if (q && q.firma && firmaActual) {
+        // Pagaron una versión anterior del carrito: no se vuelve a cobrar por QR hasta que cambie.
+        estado.qrPausaFirma = firmaActual;
+        avisar('Venta #' + venta.id + ' cobrada por QR · ' + plata(venta.total_centavos) + '. El carrito cambió después del pago: revisá qué falta cobrar', 'atencion');
+      } else {
+        avisar('Venta #' + venta.id + ' cobrada por QR · ' + plata(venta.total_centavos), 'ok');
+      }
       return;
     }
     if (estadoCobro === 'pendiente') {
@@ -1985,69 +2098,37 @@
       q.timer = setTimeout(consultarQr, estado.qrConsultaMs);
       return;
     }
-    var motivo = { cancelado: 'El cobro se canceló', vencido: 'El cobro venció sin pago', reembolsado: 'El pago fue reembolsado' }[estadoCobro] || 'El cobro terminó';
+    // Vencida o cancelada desde afuera: si el carrito sigue, se renueva sola.
     liberarQr();
-    avisar(motivo + '. La venta sigue abierta: podés cobrar de nuevo.', 'atencion');
+    if (estadoCobro === 'reembolsado') avisar('El pago por QR fue reembolsado', 'atencion');
+    programarQr(0);
   }
 
-  function mostrarQr(total) {
-    el.qrMonto.textContent = plata(total);
-    estadoQr('Esperando el pago', 'espera');
-    el.modalQr.hidden = false;
-  }
-
-  function cobrarConQr() {
-    if (!estado.carrito.length || estado.cerrando || estado.qr) return;
-    if (estado.reloj || estado.relojHoja) cancelarReloj();
-
-    estado.cerrando = true;
-    pintarCarrito();
-    var items = estado.carrito.map(function (i) {
-      return { producto_id: i.producto_id, nombre: i.nombre, marca: i.marca, tipo: i.tipo, cantidad: i.cantidad, precio_centavos: i.precio_centavos };
-    });
-
-    fetch('/api/cobros-qr', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: items, estacion: estado.estacion, descuento_id: estado.descuento ? estado.descuento.id : null }),
-    })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (!d.ok) throw new Error(d.error);
-        estado.qr = { id: d.cobro.id, total: d.cobro.total_centavos, timer: null, carritoMio: true };
-        guardarCobroQr(d.cobro.id);
-        mostrarQr(d.cobro.total_centavos);
-        estado.qr.timer = setTimeout(consultarQr, estado.qrConsultaMs);
-      })
-      .catch(function (e) {
-        estado.cerrando = false;
-        pintarCarrito();
-        avisar('No se pudo iniciar el cobro por QR: ' + e.message, 'error');
-      });
-  }
-
-  function cancelarQr() {
+  /**
+   * Baja la orden viva (carrito vacío o cierre en efectivo). Devuelve una promesa:
+   * true = se puede seguir; false = se pagó justo (ya quedó guardada) o no se pudo bajar.
+   */
+  function bajarQr() {
     var q = estado.qr;
-    if (!q) return;
-    el.qrCancelar.disabled = true;
-    estadoQr('Cancelando…', 'espera');
-    if (q.timer) clearTimeout(q.timer);
-    fetch('/api/cobros-qr/' + encodeURIComponent(q.id) + '/cancelar', { method: 'POST' })
+    if (estado.qrOcupado) { estado.qrRepetir = true; return Promise.resolve(false); }
+    if (!q) return Promise.resolve(true);
+    if (q.timer) { clearTimeout(q.timer); q.timer = null; }
+    return fetch('/api/cobros-qr/' + encodeURIComponent(q.id) + '/cancelar', { method: 'POST' })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (!d.ok) throw new Error(d.error);
-        if (d.cobro.estado === 'pagado') { resolverQr(d, q); return; } // justo se pagó
+        if (d.cobro.estado === 'pagado') { resolverQr(d, q); return false; } // justo se pagó
         liberarQr();
-        avisar('Cobro por QR cancelado', 'atencion');
+        return true;
       })
       .catch(function (e) {
-        el.qrCancelar.disabled = false;
-        estadoQr('No se pudo cancelar: ' + e.message, 'fallo');
-        q.timer = setTimeout(consultarQr, estado.qrConsultaMs);
+        estadoQr('No se pudo bajar el QR: ' + e.message, 'fallo');
+        if (estado.qr === q) q.timer = setTimeout(consultarQr, estado.qrConsultaMs);
+        return false;
       });
   }
 
-  /** Recarga de la pantalla en medio de un cobro: el servidor lo tiene, se retoma. */
+  /** Recarga de la pantalla: si había una orden viva se sigue mirando (vence sola o se paga). */
   function retomarQr() {
     var id = null;
     try { id = localStorage.getItem(CLAVE_QR); } catch (e) { /* sin storage */ }
@@ -2057,10 +2138,11 @@
       .then(function (d) {
         if (!d.ok) { guardarCobroQr(null); return; }
         if (d.cobro.estado === 'pendiente') {
-          estado.cerrando = true;
-          estado.qr = { id: id, total: d.cobro.total_centavos, timer: null, carritoMio: false };
-          mostrarQr(d.cobro.total_centavos);
+          if (estado.qr) return;
+          estado.qr = { id: id, total: d.cobro.total_centavos, firma: null, timer: null };
+          mostrarQr(estado.qr);
           estado.qr.timer = setTimeout(consultarQr, estado.qrConsultaMs);
+          programarQr(0);
         } else if (d.cobro.estado === 'pagado') {
           guardarCobroQr(null);
           avisar('Venta #' + d.cobro.venta_id + ' cobrada por QR · ' + plata(d.cobro.total_centavos), 'ok');
@@ -2078,9 +2160,8 @@
         if (!d.ok || !d.habilitado) return;
         estado.qrDisponible = true;
         estado.qrConsultaMs = Math.max(2, Number(d.consulta_segundos) || 3) * 1000;
-        el.btnCobrarQr.hidden = false;
-        el.btnCobrarQr.disabled = !estado.carrito.length || estado.cerrando;
         retomarQr();
+        programarQr(0);
       })
       .catch(function () {});
   }
@@ -2169,8 +2250,6 @@
     if (panelCarrito) panelCarrito.addEventListener('pointerdown', frenarVuelta);
 
     el.btnCobrar.addEventListener('click', cerrarVenta);
-    el.btnCobrarQr.addEventListener('click', cobrarConQr);
-    el.qrCancelar.addEventListener('click', cancelarQr);
 
     el.btnDescuento.addEventListener('click', abrirDescuentos);
     el.descuentosCerrar.addEventListener('click', cerrarDescuentos);

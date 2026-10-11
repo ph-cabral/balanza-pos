@@ -632,29 +632,22 @@ input  { font-family: inherit; font-size: inherit; }
 
 /* ---------- Cobro con QR (Mercado Pago) ---------- */
 
-.btn-qr {
-  width: 100%;
-  height: 52px;
+.qr-banda {
   margin-top: 8px;
+  padding: 8px 14px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
+  gap: 12px;
   background: var(--panel-alto);
   border: 2px solid var(--info);
   border-radius: var(--radio);
   color: var(--texto);
-  font-size: 17px;
-  font-weight: 700;
 }
-.btn-qr[hidden] { display: none; }
-.btn-qr:active { transform: scale(.985); }
-.btn-qr:disabled { border-color: var(--borde); color: var(--texto-tenue); }
-.btn-qr svg { width: 24px; height: 24px; }
-
-.qr-caja { align-items: center; text-align: center; }
-.qr-monto { font-size: 48px; font-weight: 700; letter-spacing: -1px; }
-.qr-estado { font-size: 18px; font-weight: 600; color: var(--info); }
+.qr-banda[hidden] { display: none; }
+.qr-banda svg { width: 28px; height: 28px; flex: none; color: var(--info); }
+.qr-banda-txt { min-width: 0; }
+.qr-monto { font-size: 22px; font-weight: 700; letter-spacing: -.5px; }
+.qr-estado { font-size: 15px; font-weight: 600; color: var(--info); }
 .qr-estado.pagado { color: var(--acento-fuerte); }
 .qr-estado.fallo { color: var(--error); }
 .qr-estado.espera::after {
@@ -665,7 +658,6 @@ input  { font-family: inherit; font-size: inherit; }
   animation: qr-puntos 1.2s steps(4, end) infinite;
 }
 @keyframes qr-puntos { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
-.qr-caja .desc-acciones { justify-content: center; }
 
 /* ---------- Descuento ---------- */
 

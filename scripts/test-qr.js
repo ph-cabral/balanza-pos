@@ -8,6 +8,7 @@
  *   - consultas repetidas mientras esta pendiente: no guardan nada, cache de 1,5 s
  *   - pagado: venta guardada UNA vez (medio_pago qr_mp, descuento aplicado), idempotente
  *   - segundo cobro con otro en curso en la misma caja -> 409
+ *   - `reemplaza`: el POS cambia el carrito y la orden propia se cancela y se crea otra (o devuelve el pago si justo se pagó)
  *   - cancelar / vencido / monto distinto / MP caido
  *   - barrido del servidor: la venta se guarda aunque nadie consulte
  *   - reinicio del POS con un cobro pendiente: se retoma
@@ -170,6 +171,22 @@ function crearMP() {
     await esperar(1700);
     c = await get(`/api/cobros-qr/${idD}`);
     chequear('pagado con descuento -> venta con descuento guardado', c.cobro.estado === 'pagado' && c.venta && c.venta.descuento_centavos === 345050 - neto, JSON.stringify(c.venta));
+
+    console.log('\n4c. Reemplazar la propia orden (el carrito cambió)');
+    const itemsA = [{ producto_id: unidad.id, tipo: 'unidad', cantidad: 1 }];
+    const itemsB = [{ producto_id: unidad.id, tipo: 'unidad', cantidad: 3 }];
+    r = await post('/api/cobros-qr', { items: itemsA, estacion: 'e1' });
+    const idA = r.cobro.id;
+    let rr = await post('/api/cobros-qr', { items: itemsB, estacion: 'e1', reemplaza: 'ajeno' });
+    chequear('reemplaza con un id que no es el de la caja -> 409', rr.http === 409, rr.error);
+    rr = await post('/api/cobros-qr', { items: itemsB, estacion: 'e1', reemplaza: idA });
+    const idB = rr.cobro && rr.cobro.id;
+    chequear('reemplaza: anterior cancelada en MP, nueva pendiente con el total nuevo',
+      rr.ok && idB !== idA && ord(idA).status === 'canceled' && ord(idB).status === 'created' && rr.cobro.total_centavos === 345050 * 3, JSON.stringify(rr.cobro));
+    ord(idB).status = 'processed';
+    rr = await post('/api/cobros-qr', { items: itemsA, estacion: 'e1', reemplaza: idB });
+    chequear('si la anterior se pagó justo: devuelve ese pago con su venta y no crea otra orden',
+      rr.ok && rr.cobro.id === idB && rr.cobro.estado === 'pagado' && !!rr.venta && [...mp.ordenes.values()].filter((o) => o.status === 'created').length === 0, JSON.stringify(rr.cobro));
 
     console.log('\n5. Cancelar');
     r = await post('/api/cobros-qr', { items });

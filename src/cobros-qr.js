@@ -3,7 +3,8 @@
 /**
  * Cobro con el QR fijo de Mercado Pago.
  *
- *  POST /api/cobros-qr              {items, estacion, descuento_id} -> crea el cobro y la orden en la caja
+ *  POST /api/cobros-qr              {items, estacion, descuento_id, reemplaza?} -> crea el cobro y la orden en la caja
+ *                                   (reemplaza = id del cobro propio a cancelar antes)
  *  GET  /api/cobros-qr/estado       -> {habilitado}
  *  GET  /api/cobros-qr/:id          -> consulta a MP; si se pagó, guarda la venta (una sola vez)
  *  POST /api/cobros-qr/:id/cancelar -> cancela la orden (si ya se pagó, devuelve el pago)
@@ -97,11 +98,18 @@ module.exports = function crearCobrosQr({ mp, estaciones, sheets }) {
       if (!caja) return fallo(res, 400, 'Esta estación no tiene caja de Mercado Pago configurada');
 
       // El QR fijo muestra una sola orden por vez: si hay otra en curso, no se pisa.
+      // Con `reemplaza` (el POS actualiza su propia orden al cambiar el carrito) se
+      // cancela la anterior; si justo se pagó, se devuelve ese cobro y no se crea otro.
       const previo = db.cobroQrPendienteDeCaja(caja);
       if (previo) {
-        const r = await refrescar(previo.id);
-        if (r && r.cobro.estado === 'pendiente') {
-          return fallo(res, 409, 'Ya hay un cobro por QR en curso en esta caja. Esperá a que termine o cancelalo.');
+        if (req.body.reemplaza && req.body.reemplaza === previo.id) {
+          const r = await cancelar(db.cobroQr(previo.id)); // fila completa (con order_id)
+          if (r.cobro.estado === 'pagado') return ok(res, { cobro: resumen(r.cobro), venta: r.venta });
+        } else {
+          const r = await refrescar(previo.id);
+          if (r && r.cobro.estado === 'pendiente') {
+            return fallo(res, 409, 'Ya hay un cobro por QR en curso en esta caja. Esperá a que termine o cancelalo.');
+          }
         }
       }
 
@@ -129,28 +137,34 @@ module.exports = function crearCobrosQr({ mp, estaciones, sheets }) {
     }
   });
 
+  /** Cancela el cobro en MP. Si justo se pagó, devuelve el cobro pagado (y su venta). */
+  async function cancelar(c) {
+    if (c.estado === 'pendiente' && c.order_id) {
+      try {
+        await mp.cancelarOrden(c.order_id);
+        db.cerrarCobroQr(c.id, 'cancelado');
+      } catch (e) {
+        // Puede que justo se haya pagado: mirar el estado real antes de dar error.
+        cache.delete(c.id);
+        const r = await refrescar(c.id);
+        if (r.cobro.estado === 'pendiente') throw new Error(`No se pudo cancelar: ${e.message}`);
+        return { cobro: r.cobro, venta: r.venta || null };
+      }
+    } else if (c.estado === 'pendiente') {
+      db.cerrarCobroQr(c.id, 'cancelado');
+    }
+    cache.delete(c.id);
+    return { cobro: db.cobroQr(c.id), venta: null };
+  }
+
   router.post('/:id/cancelar', async (req, res) => {
     try {
       const c = db.cobroQr(req.params.id);
       if (!c) return fallo(res, 404, 'Cobro inexistente');
-      if (c.estado === 'pendiente' && c.order_id) {
-        try {
-          await mp.cancelarOrden(c.order_id);
-          db.cerrarCobroQr(c.id, 'cancelado');
-        } catch (e) {
-          // Puede que justo se haya pagado: mirar el estado real antes de dar error.
-          cache.delete(c.id);
-          const r = await refrescar(c.id);
-          if (r.cobro.estado === 'pendiente') return fallo(res, 502, `No se pudo cancelar: ${e.message}`);
-          return ok(res, { cobro: resumen(r.cobro), venta: r.venta || null });
-        }
-      } else if (c.estado === 'pendiente') {
-        db.cerrarCobroQr(c.id, 'cancelado');
-      }
-      cache.delete(c.id);
-      ok(res, { cobro: resumen(db.cobroQr(c.id)), venta: null });
+      const r = await cancelar(c);
+      ok(res, { cobro: resumen(r.cobro), venta: r.venta });
     } catch (e) {
-      fallo(res, 500, e.message);
+      fallo(res, e.message.startsWith('No se pudo cancelar') ? 502 : 500, e.message);
     }
   });
 

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0f1419">
 <title>Balanza POS</title>
-<link rel="stylesheet" href="/css/app.css?v=18">
+<link rel="stylesheet" href="/css/app.css?v=19">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
 </head>
 <body>
@@ -207,15 +207,18 @@
         </svg>
         <span id="btnCobrarTexto">Cerrar venta</span>
       </button>
-      <!-- Solo si mercadopago esta habilitado en config.json -->
-      <button class="btn-qr" id="btnCobrarQr" hidden disabled>
+      <!-- QR de Mercado Pago: la orden se crea sola con el carrito (solo si mercadopago esta habilitado) -->
+      <div class="qr-banda" id="qrBanda" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
           <rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h1"/>
         </svg>
-        <span>Cobrar con QR</span>
-      </button>
+        <div class="qr-banda-txt">
+          <div class="qr-monto num" id="qrMonto"></div>
+          <div class="qr-estado" id="qrEstado"></div>
+        </div>
+      </div>
     </div>
 
     <!-- Simulacion de picada: la merma primero, despues cada fiambre -->
@@ -296,23 +299,10 @@
   </div>
 </div>
 
-<!-- Cobro con el QR fijo de Mercado Pago: el monto ya esta cargado en la caja -->
-<div class="selector-estacion" id="modalQr" hidden>
-  <div class="selector-caja qr-caja">
-    <div class="selector-titulo">Cobrar con QR</div>
-    <div class="qr-monto num" id="qrMonto">$ 0,00</div>
-    <div class="qr-estado" id="qrEstado">Esperando el pago…</div>
-    <div class="selector-ayuda">Que el cliente escanee el QR del mostrador con Mercado Pago: el monto ya está cargado. La venta se guarda sola cuando se acredita el pago.</div>
-    <div class="desc-acciones">
-      <button type="button" class="btn" id="qrCancelar">Cancelar cobro</button>
-    </div>
-  </div>
-</div>
-
 <div class="avisos" id="avisos"></div>
 
 <script src="/js/scanner.js?v=7"></script>
 <script src="/js/camara.js?v=8"></script>
-<script src="/js/pos.js?v=17"></script>
+<script src="/js/pos.js?v=18"></script>
 </body>
 </html>

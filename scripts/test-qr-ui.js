@@ -1,14 +1,14 @@
 'use strict';
 
 /**
- * Prueba de la pantalla del cobro con QR fijo de Mercado Pago, con navegador
- * real y Mercado Pago simulado:
- *   - el boton "Cobrar con QR" solo existe con mercadopago habilitado
- *   - escanear un articulo, tocar el boton: ventana con el monto, sin venta guardada
- *   - con el cobro en curso no se agregan articulos
- *   - al pagarse en MP la ventana se cierra sola, el carrito queda limpio y hay UNA venta (qr_mp)
- *   - cancelar el cobro vuelve a la venta abierta (carrito intacto) y se puede cobrar de nuevo
- *   - recargar la pantalla en medio del cobro lo retoma
+ * Prueba de la pantalla del cobro con QR fijo de Mercado Pago (automatico, sin boton),
+ * con navegador real y Mercado Pago simulado:
+ *   - con el carrito armado la orden se crea sola y la pantalla muestra el monto
+ *   - al cambiar el carrito la orden se actualiza (la anterior se cancela)
+ *   - cerrar la venta en efectivo baja la orden
+ *   - recargar la pantalla con la orden viva la retoma
+ *   - al pagarse en MP la venta se guarda UNA vez (qr_mp) y el carrito queda limpio
+ *   - si la orden vence y el carrito sigue, se crea otra sola
  *
  * No toca MP ni la base real: config y base temporales, puerto 3062.
  *
@@ -102,65 +102,77 @@ function crearMP() {
     const escanear = async () => { await pagina.keyboard.type('7790000000012'); await pagina.keyboard.press('Enter'); };
     const carritoN = () => pagina.evaluate(() => document.querySelectorAll('#carritoLista .item').length);
 
-    console.log('\n1. Boton');
-    await pagina.waitForFunction(() => !document.querySelector('#btnCobrarQr').hidden, null, { timeout: 10000 });
-    chequear('con MP habilitado aparece "Cobrar con QR"', true);
-    chequear('deshabilitado con el carrito vacio', await pagina.locator('#btnCobrarQr').isDisabled());
+    const abiertas = () => [...mp.ordenes.values()].filter((o) => o.status === 'created');
+    const esperarBanda = (monto) => pagina.waitForFunction((m) => {
+      const b = document.querySelector('#qrBanda');
+      return !b.hidden && document.querySelector('#qrMonto').textContent.includes(m);
+    }, monto, { timeout: 10000 });
 
-    console.log('\n2. Cobro en curso');
+    console.log('\n1. Sin boton');
+    chequear('no existe el boton "Cobrar con QR"', (await pagina.locator('#btnCobrarQr').count()) === 0);
+    await esperar(800);
+    chequear('con el carrito vacio no hay QR ni orden', await pagina.locator('#qrBanda').isHidden() && mp.n === 0);
+
+    console.log('\n2. La orden se crea sola con el carrito');
     await escanear();
     await pagina.waitForFunction(() => document.querySelector('#total').textContent.includes('3.450'), null, { timeout: 8000 });
-    chequear('articulo escaneado en el carrito', (await carritoN()) >= 1);
+    await esperarBanda('3.450,50');
+    chequear('aparece el monto del QR sin tocar nada', true, await pagina.locator('#qrMonto').innerText());
+    chequear('una orden abierta por el total', abiertas().length === 1 && abiertas()[0].total_amount === '3450.50', abiertas().map((o) => o.total_amount).join());
+    chequear('la venta todavia NO existe', (await api('/api/ventas')).ventas.length === 0);
+
+    console.log('\n3. Cambia el carrito: la orden se actualiza sola');
     await esperar(3500); // vuelta automatica a grupos
-    await pagina.locator('#btnCobrarQr').click();
-    await pagina.waitForSelector('#modalQr:not([hidden])', { timeout: 8000 });
-    chequear('ventana con el monto', (await pagina.locator('#qrMonto').innerText()).includes('3.450,50'), await pagina.locator('#qrMonto').innerText());
-    let ventas = await api('/api/ventas');
-    chequear('la venta todavia NO existe', ventas.ventas.length === 0);
     await escanear();
-    await esperar(400);
-    chequear('con el cobro en curso no entran articulos', (await carritoN()) === 1);
+    await esperarBanda('6.901,00');
+    chequear('monto nuevo en pantalla', true, await pagina.locator('#qrMonto').innerText());
+    chequear('una sola orden abierta, con el total nuevo; la anterior cancelada', abiertas().length === 1 && abiertas()[0].total_amount === '6901.00' && mp.ordenes.get('ORD1').status === 'canceled', abiertas().map((o) => o.total_amount).join());
 
-    console.log('\n3. Cancelar');
-    await pagina.locator('#qrCancelar').click();
-    await pagina.waitForSelector('#modalQr', { state: 'hidden', timeout: 8000 });
-    chequear('cancelar cierra la ventana y deja el carrito', (await carritoN()) === 1);
-    chequear('sin venta guardada', (await api('/api/ventas')).ventas.length === 0);
+    console.log('\n4. Cierre en efectivo baja el QR');
+    await pagina.locator('#btnCobrar').click();
+    await pagina.waitForFunction(() => document.querySelector('#qrBanda').hidden && document.querySelectorAll('#carritoLista .item').length === 0, null, { timeout: 10000 });
+    chequear('QR oculto y carrito limpio', true);
+    chequear('sin ordenes abiertas en MP', abiertas().length === 0);
+    let ventas = await api('/api/ventas');
+    chequear('una venta, sin medio QR', ventas.ventas.length === 1 && ventas.ventas[0].total_centavos === 690100, JSON.stringify(ventas.ventas.map((v) => v.total_centavos)));
+    await esperar(2500);
+    chequear('no quedan ordenes abiertas despues de un rato', abiertas().length === 0);
 
-    console.log('\n4. Pagar');
-    await pagina.locator('#btnCobrarQr').click();
-    await pagina.waitForSelector('#modalQr:not([hidden])', { timeout: 8000 });
-    const orden = [...mp.ordenes.values()].find((o) => o.status === 'created');
-    chequear('hay una orden nueva en la caja', !!orden && orden.total_amount === '3450.50', orden && orden.total_amount);
-
-    console.log('\n5. Recarga en medio del cobro');
+    console.log('\n5. Recarga con la orden viva');
+    await escanear();
+    await esperarBanda('3.450,50');
+    const orden = abiertas()[0];
     await pagina.reload();
-    await pagina.waitForSelector('#modalQr:not([hidden])', { timeout: 10000 });
-    chequear('la ventana vuelve sola', (await pagina.locator('#qrMonto').innerText()).includes('3.450,50'));
-
+    await pagina.waitForSelector('#vistaGrupos', { timeout: 15000 });
+    await esperarBanda('3.450,50');
+    chequear('el QR vuelve solo tras recargar', true);
     orden.status = 'processed';
-    await pagina.waitForSelector('#modalQr', { state: 'hidden', timeout: 15000 });
-    await pagina.waitForFunction(() => /cobrada por QR/.test(document.querySelector('#avisos').innerText), null, { timeout: 8000 });
-    chequear('al acreditarse: ventana cerrada y aviso de venta cobrada', true);
+    await pagina.waitForFunction(() => /cobrada por QR/.test(document.querySelector('#avisos').innerText), null, { timeout: 15000 });
+    await pagina.waitForSelector('#qrBanda', { state: 'hidden', timeout: 8000 });
     ventas = await api('/api/ventas');
-    chequear('una sola venta, por el total', ventas.ventas.length === 1 && ventas.ventas[0].total_centavos === 345050, JSON.stringify(ventas.ventas.map((v) => v.total_centavos)));
+    chequear('al acreditarse: banda oculta y una venta mas por el total', ventas.ventas.length === 2 && ventas.ventas[0].total_centavos === 345050, JSON.stringify(ventas.ventas.map((v) => v.total_centavos)));
     const det = await api(`/api/ventas/${ventas.ventas[0].id}`);
     chequear('medio de pago qr_mp', det.venta.medio_pago === 'qr_mp');
 
-    console.log('\n6. Pago sin recargar (carrito de esta pantalla)');
-    await pagina.reload();
-    await pagina.waitForSelector('#vistaGrupos', { timeout: 15000 });
-    await pagina.waitForFunction(() => !document.querySelector('#btnCobrarQr').hidden, null, { timeout: 10000 });
+    console.log('\n6. Pago con el carrito de esta pantalla');
     await escanear();
     await pagina.waitForFunction(() => document.querySelector('#total').textContent.includes('3.450'), null, { timeout: 8000 });
-    await esperar(3500);
-    await pagina.locator('#btnCobrarQr').click();
-    await pagina.waitForSelector('#modalQr:not([hidden])', { timeout: 8000 });
-    [...mp.ordenes.values()].filter((o) => o.status === 'created').forEach((o) => { o.status = 'processed'; });
-    await pagina.waitForSelector('#modalQr', { state: 'hidden', timeout: 15000 });
-    await pagina.waitForFunction(() => /guardada · QR/.test(document.querySelector('#avisos').innerText), null, { timeout: 8000 });
+    await esperarBanda('3.450,50');
+    abiertas().forEach((o) => { o.status = 'processed'; });
+    await pagina.waitForFunction(() => /guardada · QR/.test(document.querySelector('#avisos').innerText), null, { timeout: 15000 });
     chequear('aviso "guardada · QR" y carrito limpio', (await carritoN()) === 0);
-    chequear('dos ventas en total', (await api('/api/ventas')).ventas.length === 2);
+    chequear('tres ventas en total', (await api('/api/ventas')).ventas.length === 3);
+
+    console.log('\n7. Orden vencida: se renueva sola mientras el carrito siga');
+    await esperar(3500);
+    await escanear();
+    await esperarBanda('3.450,50');
+    const vieja = abiertas()[0];
+    vieja.status = 'expired';
+    await pagina.waitForFunction(() => document.querySelector('#total').textContent.includes('3.450'), null, { timeout: 8000 });
+    for (let i = 0; i < 30 && abiertas().length === 0; i++) await esperar(500);
+    chequear('hay una orden nueva abierta por el mismo total', abiertas().length === 1 && abiertas()[0].id !== vieja.id && abiertas()[0].total_amount === '3450.50', abiertas().map((o) => o.id + ':' + o.total_amount).join());
+    chequear('la venta sigue sin guardarse', (await api('/api/ventas')).ventas.length === 3);
 
     chequear('sin errores de consola/JS', errores.length === 0, errores.join(' | '));
   } catch (e) {
