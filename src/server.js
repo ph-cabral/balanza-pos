@@ -20,6 +20,7 @@ const crearApi = require('./routes/api');
 const crearSheets = require('./sheets');
 const crearGastos = require('./gastos');
 const crearSheetsImportar = require('./sheets-importar');
+const crearMercadoPago = require('./mercadopago');
 const tls = require('./tls');
 
 const RAIZ = path.join(__dirname, '..');
@@ -107,6 +108,8 @@ const sheets = crearSheets(config);
 const sheetsImportar = crearSheetsImportar(config);
 // Gastos por proveedor: se leen de esa copia local de la planilla.
 const gastos = crearGastos(config, sheetsImportar);
+// Cobro con el QR fijo de Mercado Pago (apagado hasta cargar mercadopago.* en config.json).
+const mercadopago = crearMercadoPago(config);
 
 // Ultima vez que alguien modifico algo por la API (venta, alta de producto...).
 // El actualizador automatico no reinicia el POS si hubo movimiento reciente.
@@ -116,7 +119,7 @@ app.use('/api', (req, _res, next) => {
   next();
 });
 
-app.use('/api', crearApi({ estaciones, guardarConfig, config, sheets, gastos, sheetsImportar }));
+app.use('/api', crearApi({ estaciones, guardarConfig, config, sheets, gastos, sheetsImportar, mercadopago }));
 
 app.get('/api/version', (_req, res) => {
   res.json({ ok: true, version: VERSION, iniciado: INICIADO, deploy: leerEstadoDeploy() });

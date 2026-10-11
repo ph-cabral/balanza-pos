@@ -57,6 +57,9 @@ jobs:
       - name: Estaciones
         run: npm run test-estaciones
 
+      - name: Cobro con QR de Mercado Pago (API, MP simulado)
+        run: npm run test-qr
+
       - name: Despliegue (version, caja ocupada)
         run: npm run test-deploy
 
@@ -71,6 +74,10 @@ jobs:
 
       - name: Simulación de picada (Playwright)
         run: npm run test-picada
+        env: { POS_SIN_SHEETS: '1' }
+
+      - name: Cobro con QR en pantalla (Playwright)
+        run: npm run test-qr-ui
         env: { POS_SIN_SHEETS: '1' }
 
       - name: Capturas si fallo

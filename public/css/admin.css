@@ -425,3 +425,36 @@ td select.asignar {
 .caja-producto { width: min(760px, 100%); }
 .caja-producto .modal-titulo { margin: 0; font-size: 20px; font-weight: 700; }
 .caja-producto .acciones-form { margin-bottom: 0; }
+
+/* Catalogo en celular: cada fila es una tarjeta (nombre + precio arriba,
+   marca/tipo/codigo en el medio, acciones abajo) en vez de una tabla ancha. */
+@media (max-width: 640px) {
+  .tabla-cards, .tabla-cards tbody { display: block; }
+  .tabla-cards thead { display: none; }
+  .tabla-cards tr {
+    display: grid;
+    grid-template-columns: auto auto 1fr auto;
+    grid-template-areas:
+      "nombre nombre nombre precio"
+      "marca  tipo   cod    cod"
+      "acc    acc    acc    acc";
+    align-items: center;
+    column-gap: 10px;
+    row-gap: 6px;
+    padding: 12px 4px;
+    border-bottom: 1px solid var(--borde-suave);
+  }
+  .tabla-cards td { display: block; padding: 0; border: 0; min-width: 0; }
+  .tabla-cards tr.fila-categoria { display: block; padding: 0; border: 0; margin-top: 8px; }
+  .tabla-cards tr.fila-categoria td { padding: 8px 12px; border-radius: 6px; }
+  .tabla-cards .c-nombre { grid-area: nombre; font-weight: 600; font-size: 15px; }
+  .tabla-cards .c-precio { grid-area: precio; font-size: 16px; font-weight: 700; white-space: nowrap; align-self: start; }
+  .tabla-cards .c-marca { grid-area: marca; color: var(--texto-medio); }
+  .tabla-cards .c-tipo { grid-area: tipo; }
+  .tabla-cards .c-cod { grid-area: cod; justify-self: end; color: var(--texto-tenue); overflow-wrap: anywhere; text-align: right; }
+  .tabla-cards .c-acc { grid-area: acc; margin-top: 4px; }
+  .tabla-cards .c-acc .acciones-fila { justify-content: flex-start; }
+  .tabla-cards .c-acc .btn { flex: 1; }
+  .tabla-cards tr:has(> td[colspan]) { display: block; }
+  .tabla-cards tr:has(> td[colspan]):not(.fila-categoria) { padding: 20px 0; }
+}

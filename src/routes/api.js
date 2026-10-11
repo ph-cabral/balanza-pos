@@ -9,8 +9,9 @@ const express = require('express');
 const db = require('../db');
 const puertos = require('../puertos');
 const { mesValido } = require('../gastos');
+const crearCobrosQr = require('../cobros-qr');
 
-module.exports = function crearApi({ estaciones, guardarConfig, config, sheets, gastos, sheetsImportar }) {
+module.exports = function crearApi({ estaciones, guardarConfig, config, sheets, gastos, sheetsImportar, mercadopago }) {
   const router = express.Router();
 
   const ok = (res, data) => res.json({ ok: true, ...data });
@@ -285,6 +286,9 @@ module.exports = function crearApi({ estaciones, guardarConfig, config, sheets, 
       fallo(res, 400, e.message);
     }
   });
+
+  // --- Cobro con QR fijo de Mercado Pago ----------------------------------
+  router.use('/cobros-qr', crearCobrosQr({ mp: mercadopago, estaciones, sheets }));
 
   // --- Descuentos (lista corta que se elige desde el POS) ------------------
   router.get('/descuentos', (_req, res) => ok(res, { descuentos: db.listarDescuentos() }));

@@ -382,6 +382,35 @@ CREATE TABLE IF NOT EXISTS descuentos (
   if (!cols.includes('descuento_centavos')) db.exec(`ALTER TABLE ventas ADD COLUMN descuento_centavos INTEGER NOT NULL DEFAULT 0`);
 }
 
+// --- Cobros por QR de Mercado Pago ------------------------------------------
+// Un cobro nace al pedir el pago con el QR fijo y se convierte en venta recien
+// cuando Mercado Pago confirma el pago (la venta nunca se guarda antes). `payload`
+// guarda lo necesario para armar la venta (items, estacion, descuento) aunque se
+// reinicie el POS o se cierre la tablet. Consultas siempre por clave primaria o
+// por el indice parcial de pendientes (pocas filas, no crece con el historial).
+db.exec(`
+CREATE TABLE IF NOT EXISTS cobros_qr (
+  id             TEXT PRIMARY KEY,
+  order_id       TEXT,
+  pos_id         TEXT    NOT NULL,
+  total_centavos INTEGER NOT NULL,
+  estado         TEXT    NOT NULL DEFAULT 'pendiente'
+                 CHECK (estado IN ('pendiente','pagado','cancelado','vencido','reembolsado')),
+  venta_id       INTEGER,
+  payload        TEXT    NOT NULL,
+  creado_en      TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS ix_cobros_qr_pend ON cobros_qr(pos_id) WHERE estado = 'pendiente';
+`);
+{
+  const cols = db.prepare(`PRAGMA table_info(ventas)`).all().map((c) => c.name);
+  // '' = sin dato (ventas anteriores); 'qr_mp' = cobrada por QR de Mercado Pago.
+  if (!cols.includes('medio_pago')) db.exec(`ALTER TABLE ventas ADD COLUMN medio_pago TEXT NOT NULL DEFAULT ''`);
+}
+// Pendientes viejos (el POS se cerro en medio del cobro): la orden ya vencio en MP.
+db.prepare(`UPDATE cobros_qr SET estado = 'vencido'
+            WHERE estado = 'pendiente' AND creado_en < datetime('now','localtime','-1 day')`).run();
+
 // Pesables: el subtotal se redondea SIEMPRE para arriba a multiplo de $100
 // (6215 -> 6300). Misma regla en public/js/pos.js.
 const REDONDEO_PESABLE_CENTAVOS = 10000;
@@ -523,9 +552,19 @@ const S = {
   `),
 
   insertarVenta: db.prepare(`
-    INSERT INTO ventas (total_centavos, items_count, estacion_id, estacion, descuento_nombre, descuento_centavos)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO ventas (total_centavos, items_count, estacion_id, estacion, descuento_nombre, descuento_centavos, medio_pago)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `),
+
+  cobroQrInsertar: db.prepare(`
+    INSERT INTO cobros_qr (id, pos_id, total_centavos, payload) VALUES (@id, @pos_id, @total_centavos, @payload)
+  `),
+  cobroQrPorId: db.prepare(`SELECT id, order_id, pos_id, total_centavos, estado, venta_id, payload, creado_en FROM cobros_qr WHERE id = ?`),
+  cobroQrPendienteDeCaja: db.prepare(`SELECT id, creado_en FROM cobros_qr WHERE estado = 'pendiente' AND pos_id = ?`),
+  cobrosQrPendientes: db.prepare(`SELECT id FROM cobros_qr WHERE estado = 'pendiente'`),
+  cobroQrOrden: db.prepare(`UPDATE cobros_qr SET order_id = ? WHERE id = ?`),
+  cobroQrEstado: db.prepare(`UPDATE cobros_qr SET estado = ? WHERE id = ? AND estado = 'pendiente'`),
+  cobroQrPagado: db.prepare(`UPDATE cobros_qr SET estado = 'pagado', venta_id = ? WHERE id = ?`),
 
   listarDescuentos: db.prepare(`SELECT id, nombre, tipo, valor FROM descuentos ORDER BY id`),
   descuentoPorId: db.prepare(`SELECT id, nombre, tipo, valor FROM descuentos WHERE id = ?`),
@@ -546,7 +585,7 @@ const S = {
 
   ventaPorId: db.prepare(`
     SELECT id, fecha, total_centavos, items_count, estado, arca_estado, arca_cae, estacion_id, estacion, origen,
-           descuento_nombre, descuento_centavos
+           descuento_nombre, descuento_centavos, medio_pago
     FROM ventas WHERE id = ?
   `),
 
@@ -755,6 +794,55 @@ function normalizarProducto(p) {
   };
 }
 
+/** Valida y valoriza los items de una venta con los precios vigentes. Sin escribir. */
+function prepararVenta(items, opciones = {}) {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new Error('La venta no tiene items');
+  }
+
+  const preparados = items.map((it) => {
+    const producto = it.producto_id ? S.porId.get(it.producto_id) : null;
+    const tipo = it.tipo === 'unidad' ? 'unidad' : 'peso';
+    const nombre = producto ? producto.nombre : (it.nombre || 'item sin nombre');
+    const cantidad = Math.max(0, Math.round(Number(it.cantidad) || 0));
+    if (cantidad <= 0) throw new Error(`Cantidad invalida en "${nombre}"`);
+
+    // El precio sale del producto vigente; si el producto fue borrado, del item.
+    const precio = producto
+      ? producto.precio_centavos
+      : Math.max(0, Math.round(Number(it.precio_centavos) || 0));
+
+    // peso  -> cantidad en gramos, precio por kilo
+    // unidad-> cantidad en unidades, precio por unidad
+    const subtotal = tipo === 'peso'
+      ? subtotalPesable(cantidad, precio)
+      : cantidad * precio;
+
+    return {
+      producto_id: producto ? producto.id : null,
+      nombre,
+      marca: producto ? producto.marca : (it.marca ?? ''),
+      categoria: producto ? (producto.categoria || '') : '',
+      codigo_barras: producto ? (producto.codigo_barras || null) : null,
+      tipo,
+      cantidad,
+      precio_centavos: precio,
+      subtotal_centavos: subtotal,
+    };
+  });
+
+  const bruto = preparados.reduce((a, it) => a + it.subtotal_centavos, 0);
+  let descNombre = '';
+  let descMonto = 0;
+  if (opciones.descuento_id) {
+    const d = S.descuentoPorId.get(Number(opciones.descuento_id));
+    if (!d) throw new Error('El descuento elegido ya no existe');
+    descNombre = d.nombre;
+    descMonto = montoDescuento(d, bruto);
+  }
+  return { preparados, bruto, descNombre, descMonto, total: bruto - descMonto };
+}
+
 // --- API del modulo ---------------------------------------------------------
 const api = {
   db,
@@ -889,54 +977,16 @@ const api = {
    */
   // opciones.sheets = true -> la venta queda en la cola de envio a Google Sheets
   // dentro de la misma transaccion (si se guarda la venta, se guarda el pendiente).
+  /** Total que tendria una venta (sin guardarla): misma cuenta que guardarVenta. */
+  totalVenta: (items, opciones = {}) => {
+    const { bruto, descMonto, total } = prepararVenta(items, opciones);
+    return { bruto_centavos: bruto, descuento_centavos: descMonto, total_centavos: total };
+  },
+
   guardarVenta: db.transaction((items, opciones = {}) => {
-    if (!Array.isArray(items) || items.length === 0) {
-      throw new Error('La venta no tiene items');
-    }
-
-    const preparados = items.map((it) => {
-      const producto = it.producto_id ? S.porId.get(it.producto_id) : null;
-      const tipo = it.tipo === 'unidad' ? 'unidad' : 'peso';
-      const nombre = producto ? producto.nombre : (it.nombre || 'item sin nombre');
-      const cantidad = Math.max(0, Math.round(Number(it.cantidad) || 0));
-      if (cantidad <= 0) throw new Error(`Cantidad invalida en "${nombre}"`);
-
-      // El precio sale del producto vigente; si el producto fue borrado, del item.
-      const precio = producto
-        ? producto.precio_centavos
-        : Math.max(0, Math.round(Number(it.precio_centavos) || 0));
-
-      // peso  -> cantidad en gramos, precio por kilo
-      // unidad-> cantidad en unidades, precio por unidad
-      const subtotal = tipo === 'peso'
-        ? subtotalPesable(cantidad, precio)
-        : cantidad * precio;
-
-      return {
-        producto_id: producto ? producto.id : null,
-        nombre,
-        marca: producto ? producto.marca : (it.marca ?? ''),
-        categoria: producto ? (producto.categoria || '') : '',
-        codigo_barras: producto ? (producto.codigo_barras || null) : null,
-        tipo,
-        cantidad,
-        precio_centavos: precio,
-        subtotal_centavos: subtotal,
-      };
-    });
-
-    const bruto = preparados.reduce((a, it) => a + it.subtotal_centavos, 0);
-    let descNombre = '';
-    let descMonto = 0;
-    if (opciones.descuento_id) {
-      const d = S.descuentoPorId.get(Number(opciones.descuento_id));
-      if (!d) throw new Error('El descuento elegido ya no existe');
-      descNombre = d.nombre;
-      descMonto = montoDescuento(d, bruto);
-    }
-    const total = bruto - descMonto;
+    const { preparados, descNombre, descMonto, total } = prepararVenta(items, opciones);
     const est = opciones.estacion || null;
-    const info = S.insertarVenta.run(total, preparados.length, est ? est.id : null, est ? est.nombre : '', descNombre, descMonto);
+    const info = S.insertarVenta.run(total, preparados.length, est ? est.id : null, est ? est.nombre : '', descNombre, descMonto, opciones.medio_pago || '');
     const ventaId = info.lastInsertRowid;
 
     for (const it of preparados) {
@@ -949,6 +999,35 @@ const api = {
       id: ventaId, total_centavos: total, items: preparados.length, estacion: est ? est.nombre : '',
       descuento_nombre: descNombre, descuento_centavos: descMonto,
     };
+  }),
+
+  // --- Cobros por QR de Mercado Pago ---
+  crearCobroQr: ({ id, pos_id, total_centavos, payload }) =>
+    S.cobroQrInsertar.run({ id, pos_id, total_centavos, payload: JSON.stringify(payload) }),
+  cobroQr: (id) => S.cobroQrPorId.get(id) || null,
+  cobroQrPendienteDeCaja: (posId) => S.cobroQrPendienteDeCaja.get(posId) || null,
+  cobrosQrPendientes: () => S.cobrosQrPendientes.all().map((r) => r.id),
+  cobroQrOrden: (id, orderId) => S.cobroQrOrden.run(orderId, id),
+  /** pendiente -> cancelado | vencido | reembolsado (no toca los ya resueltos). */
+  cerrarCobroQr: (id, estado) => S.cobroQrEstado.run(estado, id),
+  /**
+   * Mercado Pago confirmo el pago: guarda la venta UNA sola vez. Idempotente
+   * (el POS consulta cada pocos segundos y ademas hay un barrido en el servidor).
+   * Acepta un cobro ya cancelado/vencido localmente: si MP dice pagado, manda MP.
+   */
+  confirmarCobroQr: db.transaction((id, opcionesVenta = {}) => {
+    const c = S.cobroQrPorId.get(id);
+    if (!c) throw new Error('Cobro QR inexistente');
+    if (c.estado === 'pagado' && c.venta_id) return { venta_id: c.venta_id, nuevo: false };
+    const p = JSON.parse(c.payload);
+    const venta = api.guardarVenta(p.items, {
+      ...opcionesVenta,
+      estacion: p.estacion || null,
+      descuento_id: p.descuento_id || null,
+      medio_pago: 'qr_mp',
+    });
+    S.cobroQrPagado.run(venta.id, id);
+    return { venta_id: venta.id, venta, nuevo: true };
   }),
 
   // --- Descuentos ---

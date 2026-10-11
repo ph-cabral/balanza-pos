@@ -44,5 +44,14 @@
     "reintentoSegundos": 60,
     "importar": true,
     "importarSegundos": 600
+  },
+  "mercadopago": {
+    "habilitado": false,
+    "accessToken": "",
+    "userId": "",
+    "externalPosId": "",
+    "cajas": {},
+    "expiracionMinutos": 5,
+    "consultaSegundos": 3
   }
 }

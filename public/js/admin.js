@@ -617,6 +617,12 @@
       }
 
       tdAcc.appendChild(wrap);
+      tdNombre.className = 'c-nombre';
+      tdMarca.className = 'c-marca';
+      tdTipo.className = 'c-tipo';
+      tdCod.className = 'c-cod';
+      tdPrecio.className += ' c-precio';
+      tdAcc.className += ' c-acc';
       [tdNombre, tdMarca, tdTipo, tdCod, tdPrecio, tdAcc].forEach(function (td) { tr.appendChild(td); });
       frag.appendChild(tr);
     });
