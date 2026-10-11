@@ -596,6 +596,21 @@ const S = {
     FROM venta_items WHERE venta_id = ? ORDER BY id
   `),
 
+  // Tickets de un dia (rango sobre ix_ventas_fecha) y sus items (ix_items_venta).
+  // Las ventas importadas de la planilla (origen 'sheet') no tienen detalle.
+  ticketsVentas: db.prepare(`
+    SELECT id, fecha, total_centavos, estacion, origen, descuento_nombre, descuento_centavos,
+           medio_pago, ajuste_medio_centavos
+    FROM ventas WHERE fecha >= @desde AND fecha < @hasta ORDER BY fecha, id
+  `),
+
+  ticketsItems: db.prepare(`
+    SELECT i.venta_id, i.nombre, i.marca, i.tipo, i.cantidad, i.precio_centavos, i.subtotal_centavos
+    FROM venta_items i JOIN ventas v ON v.id = i.venta_id
+    WHERE v.fecha >= @desde AND v.fecha < @hasta AND v.origen <> 'sheet'
+    ORDER BY i.id
+  `),
+
   resumenDia: db.prepare(`
     SELECT COUNT(*) AS ventas, COALESCE(SUM(total_centavos),0) AS total_centavos
     FROM ventas
@@ -1102,6 +1117,20 @@ const api = {
     const venta = S.ventaPorId.get(id);
     if (!venta) return null;
     return { ...venta, items: S.itemsDeVenta.all(id) };
+  },
+  // Tickets de un dia ('AAAA-MM-DD') con sus items, del mas viejo al mas nuevo.
+  ticketsDelDia: (dia) => {
+    const sig = new Date(`${dia}T12:00:00Z`);
+    sig.setUTCDate(sig.getUTCDate() + 1);
+    const rango = { desde: `${dia} 00:00:00`, hasta: `${sig.toISOString().slice(0, 10)} 00:00:00` };
+    const ventas = S.ticketsVentas.all(rango);
+    const porId = new Map();
+    for (const v of ventas) { v.items = []; porId.set(v.id, v); }
+    for (const it of S.ticketsItems.all(rango)) {
+      const v = porId.get(it.venta_id);
+      if (v) v.items.push(it);
+    }
+    return ventas;
   },
   hoyLocal: () => S.hoyLocal.get().hoy, // 'AAAA-MM-DD' en hora de la PC
   resumenDia: () => S.resumenDia.get(),

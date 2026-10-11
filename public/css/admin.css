@@ -458,3 +458,29 @@ td select.asignar {
   .tabla-cards tr:has(> td[colspan]) { display: block; }
   .tabla-cards tr:has(> td[colspan]):not(.fila-categoria) { padding: 20px 0; }
 }
+
+/* ---- Tickets del dia (Ventas) ---- */
+.tk-cab { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.tk-cab h2 { margin: 0; }
+.tk-controles { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 14px; }
+.tk-controles input {
+  height: 36px; padding: 0 10px; min-width: 0; font: inherit; color: var(--texto);
+  background: var(--fondo); border: 1px solid var(--borde); border-radius: var(--radio-chico); color-scheme: dark;
+}
+.tk-controles input[type="search"] { flex: 1 1 180px; }
+.tk-horas { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0; }
+.tk-hora { font-variant-numeric: tabular-nums; }
+.tk-grilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 12px; align-items: start; }
+.tk { background: var(--fondo); border: 1px solid var(--borde); border-radius: var(--radio); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.tk-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; border-bottom: 1px dashed var(--borde); padding-bottom: 6px; }
+.tk-hora-t { font-size: 20px; font-weight: 700; }
+.tk-id { color: var(--texto-tenue); font-size: 12px; }
+.tk-it { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; }
+.tk-it .n { font-weight: 600; overflow-wrap: anywhere; }
+.tk-it .n small { font-weight: 400; color: var(--texto-tenue); }
+.tk-it .d { color: var(--texto-tenue); font-size: 13px; }
+.tk-it .s { grid-column: 2; grid-row: 1 / span 2; align-self: center; text-align: right; }
+.tk-sin { margin: 0; color: var(--texto-tenue); font-size: 14px; }
+.tk-pie { border-top: 1px dashed var(--borde); padding-top: 6px; display: flex; flex-direction: column; gap: 2px; }
+.tk-fila { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; color: var(--texto-medio); }
+.tk-fila.tk-total { color: var(--texto); font-size: 17px; font-weight: 700; }

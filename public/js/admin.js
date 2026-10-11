@@ -1598,6 +1598,7 @@
       var tr = document.createElement('tr');
       if (!x.ventas) tr.className = 'cero';
       if (x.dia === d.hoy) tr.className += ' hoy';
+      if (x.ventas) { tr.style.cursor = 'pointer'; tr.title = 'Ver los tickets de este día'; tr.addEventListener('click', function () { abrirTickets(x.dia); }); }
       tr.innerHTML =
         '<td class="num"><span class="dia-sem">' + fmtSemana.format(fecha).replace('.', '').replace(/^./, function (c) { return c.toUpperCase(); }) + '</span>' +
           p[2] + '/' + p[1] + (x.dia === d.hoy ? ' · hoy' : '') + '</td>' +
@@ -1809,6 +1810,124 @@
       });
     }).catch(function (e) { avisar(e.message, 'error'); });
   }
+
+  // ---- Tickets del dia: una tarjeta por venta con sus articulos ----------
+  var tk = { dia: '', hora: null, tickets: [] };
+
+  function hh(n) { return (n < 10 ? '0' : '') + n; }
+  function nodo(tag, cls, texto) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (texto != null) n.textContent = texto;
+    return n;
+  }
+  function sumarDias(dia, n) {
+    var d = new Date(dia + 'T12:00:00');
+    d.setDate(d.getDate() + n);
+    return d.getFullYear() + '-' + hh(d.getMonth() + 1) + '-' + hh(d.getDate());
+  }
+  function gramos(g) { return g >= 1000 ? kg(g) + ' kg' : g + ' g'; }
+
+  function abrirTickets(dia) {
+    $('panelTickets').hidden = false;
+    $('btnTickets').setAttribute('aria-expanded', 'true');
+    cargarTickets(dia || tk.dia || '');
+    $('panelTickets').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function cargarTickets(dia) {
+    api('/api/ventas/tickets' + (dia ? '?dia=' + encodeURIComponent(dia) : '')).then(function (d) {
+      tk.dia = d.dia; tk.hoy = d.hoy; tk.tickets = d.tickets; tk.hora = null;
+      $('tkDia').value = d.dia;
+      $('tkSig').disabled = d.dia >= d.hoy;
+      pintarTickets();
+    }).catch(function (e) { avisar(e.message, 'error'); });
+  }
+
+  function pintarTickets() {
+    var todos = tk.tickets;
+    var total = todos.reduce(function (a, t) { return a + t.total_centavos; }, 0);
+    $('tkCant').textContent = todos.length;
+    $('tkTotal').textContent = plata(total);
+    $('tkProm').textContent = todos.length ? plata(Math.round(total / todos.length)) : '—';
+
+    // Una ficha por hora con ventas; tocar una filtra, tocarla de nuevo quita el filtro.
+    var porHora = {};
+    todos.forEach(function (t) {
+      var h = Number(t.fecha.slice(11, 13));
+      if (!porHora[h]) porHora[h] = { n: 0, total: 0 };
+      porHora[h].n++; porHora[h].total += t.total_centavos;
+    });
+    var cajaH = $('tkHoras');
+    cajaH.textContent = '';
+    Object.keys(porHora).map(Number).sort(function (a, b) { return a - b; }).forEach(function (h) {
+      var b = nodo('button', 'btn chico tk-hora' + (tk.hora === h ? ' activo' : ''), hh(h) + ' h · ' + porHora[h].n + ' · ' + plata(porHora[h].total));
+      b.type = 'button';
+      b.addEventListener('click', function () { tk.hora = tk.hora === h ? null : h; pintarTickets(); });
+      cajaH.appendChild(b);
+    });
+
+    var q = $('tkBuscar').value.trim().toLowerCase();
+    var lista = todos.filter(function (t) {
+      if (tk.hora != null && Number(t.fecha.slice(11, 13)) !== tk.hora) return false;
+      if (!q) return true;
+      return t.items.some(function (i) { return (i.nombre + ' ' + (i.marca || '')).toLowerCase().indexOf(q) >= 0; });
+    }).reverse(); // el mas reciente arriba
+
+    var g = $('tkGrilla');
+    g.textContent = '';
+    if (!lista.length) {
+      g.appendChild(nodo('p', 'ayuda', todos.length ? 'No hay tickets con ese filtro.' : 'No hay ventas ese día.'));
+      return;
+    }
+    lista.forEach(function (t) {
+      var c = nodo('article', 'tk');
+      var top = nodo('div', 'tk-top');
+      top.appendChild(nodo('span', 'tk-hora-t num', t.fecha.slice(11, 16)));
+      top.appendChild(nodo('span', 'tk-id num', '#' + t.id + (t.estacion ? ' · ' + t.estacion : '')));
+      c.appendChild(top);
+
+      if (t.origen === 'sheet' || !t.items.length) {
+        c.appendChild(nodo('p', 'tk-sin', 'Venta de la planilla, sin detalle de artículos.'));
+      } else {
+        t.items.forEach(function (i) {
+          var f = nodo('div', 'tk-it');
+          var n = nodo('div', 'n', i.nombre);
+          if (i.marca) { n.appendChild(document.createTextNode(' ')); n.appendChild(nodo('small', null, i.marca)); }
+          f.appendChild(n);
+          f.appendChild(nodo('div', 's num', plata(i.subtotal_centavos)));
+          f.appendChild(nodo('div', 'd num', i.tipo === 'peso'
+            ? gramos(i.cantidad) + ' × ' + plata(i.precio_centavos) + '/kg'
+            : i.cantidad + ' × ' + plata(i.precio_centavos)));
+          c.appendChild(f);
+        });
+      }
+
+      var pie = nodo('div', 'tk-pie');
+      function fila(txt, val, cls) {
+        var r = nodo('div', 'tk-fila ' + (cls || ''));
+        r.appendChild(nodo('span', null, txt)); r.appendChild(nodo('span', 'num', val)); pie.appendChild(r);
+      }
+      if (t.descuento_centavos) fila('Descuento ' + (t.descuento_nombre || ''), '-' + plata(t.descuento_centavos));
+      if (t.ajuste_medio_centavos) fila('Medio de pago ' + (t.medio_pago === 'qr_mp' ? 'QR' : t.medio_pago === 'tarjeta' ? 'Tarjeta' : ''), '+' + plata(t.ajuste_medio_centavos));
+      fila('Total', plata(t.total_centavos), 'tk-total');
+      c.appendChild(pie);
+      g.appendChild(c);
+    });
+  }
+
+  $('btnTickets').addEventListener('click', function () {
+    if ($('panelTickets').hidden) abrirTickets(); else $('tkCerrar').click();
+  });
+  $('tkCerrar').addEventListener('click', function () {
+    $('panelTickets').hidden = true;
+    $('btnTickets').setAttribute('aria-expanded', 'false');
+  });
+  $('tkDia').addEventListener('change', function () { if (this.value) cargarTickets(this.value); });
+  $('tkAnt').addEventListener('click', function () { cargarTickets(sumarDias(tk.dia, -1)); });
+  $('tkSig').addEventListener('click', function () { cargarTickets(sumarDias(tk.dia, 1)); });
+  $('tkHoy').addEventListener('click', function () { cargarTickets(''); });
+  $('tkBuscar').addEventListener('input', pintarTickets);
 
   function verDetalle(id) {
     api('/api/ventas/' + id).then(function (d) {

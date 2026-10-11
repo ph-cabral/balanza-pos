@@ -327,6 +327,15 @@ module.exports = function crearApi({ estaciones, guardarConfig, config, sheets, 
     ok(res, db.totalesVentas(String(req.query.mes || ''), Number(req.query.meses) || 24));
   });
 
+  // Tickets de un dia con sus articulos: ?dia=AAAA-MM-DD (por defecto hoy).
+  // Declarada antes de /ventas/:id para que 'tickets' no se tome como id.
+  router.get('/ventas/tickets', (req, res) => {
+    const hoy = db.hoyLocal();
+    const pedido = String(req.query.dia || '');
+    const dia = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(pedido) ? pedido : hoy;
+    ok(res, { dia, hoy, tickets: db.ticketsDelDia(dia) });
+  });
+
   // --- Gastos por proveedor (copia local de la planilla de Google) ----------
 
   // ?mes=AAAA-MM (por defecto el actual); ?refrescar=1 relee la planilla antes.
