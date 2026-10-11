@@ -27,6 +27,16 @@ const SIM_PASOS = 5;
 /** Pasado este tiempo sin datos, el ultimo peso leido se considera viejo. */
 const MS_LECTURA_VIEJA = 2500;
 
+/**
+ * Si el puerto figura abierto pero no llega ningun dato durante este tiempo, se
+ * cierra y se vuelve a abrir. La balanza transmite continuo (t_PESO), asi que
+ * el silencio es una falla: tipicamente el adaptador USB-serie se cuelga o
+ * Windows lo suspende y el puerto queda "abierto" sin avisar (no hay evento
+ * 'close'). Antes habia que desenchufar y enchufar el USB para recuperarlo.
+ * Se puede cambiar con `reabrirSinDatosMs` en la config (0 = desactivado).
+ */
+const MS_SIN_DATOS_REABRIR = 5000;
+
 class BalanzaDriver extends EventEmitter {
   /**
    * @param config   config de esta balanza (puerto, protocolo, ...)
@@ -57,6 +67,8 @@ class BalanzaDriver extends EventEmitter {
     this._port = null;
     this._timerReconexion = null;
     this._timerSim = null;
+    this._timerVigia = null;
+    this._abiertoEn = 0;
     this._ultimoEmit = 0;
     this._pendiente = false;
     this._intervaloEmit = Math.max(50, Math.round(1000 / (config.broadcastHz || 6)));
@@ -68,6 +80,9 @@ class BalanzaDriver extends EventEmitter {
   iniciar() {
     this._detenido = false;
     if (this.config.simulador) return this._iniciarSimulador();
+    clearInterval(this._timerVigia);
+    this._timerVigia = setInterval(() => this._vigilar(), 1000);
+    if (this._timerVigia.unref) this._timerVigia.unref();
     return this._abrirPuerto();
   }
 
@@ -76,8 +91,10 @@ class BalanzaDriver extends EventEmitter {
     this._gen = (this._gen || 0) + 1;
     clearTimeout(this._timerReconexion);
     clearInterval(this._timerSim);
+    clearInterval(this._timerVigia);
     this._timerReconexion = null;
     this._timerSim = null;
+    this._timerVigia = null;
     if (this._port && this._port.isOpen) {
       try { this._port.close(); } catch (_) { /* ya estaba cerrado */ }
     }
@@ -219,6 +236,7 @@ class BalanzaDriver extends EventEmitter {
           : ' Esta PC no ve ningún puerto COM: revisar el cable USB y el driver del adaptador.';
         return this._fallo(`No se pudo abrir ${cfg.puerto}: ${err.message}.${hay}`);
       }
+      this._abiertoEn = Date.now();
       this.estado.conectado = true;
       this.estado.error = null;
       this.emit('estado', this.snapshot());
@@ -235,6 +253,43 @@ class BalanzaDriver extends EventEmitter {
       this.emit('estado', this.snapshot());
       this._programarReconexion();
     });
+  }
+
+  /** Detecta el puerto "abierto pero mudo" y lo reabre solo. */
+  _vigilar() {
+    if (this._detenido || this.config.simulador) return;
+    const umbral = this.config.reabrirSinDatosMs ?? MS_SIN_DATOS_REABRIR;
+    if (!umbral) return;
+    const port = this._port;
+    if (!port || !port.isOpen) return; // sin puerto: ya hay una reconexion en curso
+    const ref = Math.max(this.estado.ultimaLectura || 0, this._abiertoEn || 0);
+    const mudo = Date.now() - ref;
+    if (mudo < umbral) return;
+    this._reabrir(`sin datos hace ${Math.round(mudo / 1000)}s`);
+  }
+
+  _reabrir(motivo) {
+    console.log(`  [${this.nombre}] ${motivo}: reabriendo ${this.estado.puerto}`);
+    const port = this._port;
+    this._port = null; // los eventos del puerto viejo quedan ignorados
+    clearTimeout(this._timerReconexion);
+    this._buffer = '';
+    this._historial = [];
+    this.estado.conectado = false;
+    this.estado.error = 'La balanza dejó de enviar datos; reabriendo el puerto';
+    this.emit('estado', this.snapshot());
+
+    let seguido = false;
+    const seguir = () => {
+      if (seguido) return;
+      seguido = true;
+      this._programarReconexion();
+    };
+    try {
+      if (port && port.isOpen) port.close(seguir); else seguir();
+    } catch (_) { seguir(); }
+    // Si el driver del adaptador cuelga el close(), no esperamos para siempre.
+    setTimeout(seguir, 2000);
   }
 
   _fallo(mensaje) {
