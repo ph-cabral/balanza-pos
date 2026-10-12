@@ -114,6 +114,8 @@ const mercadopago = crearMercadoPago(config);
 // Ultima vez que alguien modifico algo por la API (venta, alta de producto...).
 // El actualizador automatico no reinicia el POS si hubo movimiento reciente.
 let ultimaEscritura = 0;
+// Carrito con articulos sin ningun toque en este tiempo = abandonado (no bloquea el deploy).
+const CARRITO_ABANDONADO_MS = Math.max(60, Number(config.carritoAbandonadoSegundos) || 600) * 1000;
 app.use('/api', (req, _res, next) => {
   if (req.method !== 'GET') ultimaEscritura = Date.now();
   next();
@@ -140,7 +142,9 @@ app.get('/api/deploy/ocupado', (req, res) => {
   for (const c of wss.clients) {
     if (c.readyState !== 1 || c.todo) continue;
     const nombre = (estaciones.estacionOPrimera(c.estacion) || {}).nombre || 'un equipo';
-    if (c.items > 0) motivos.push(`${nombre}: carrito con ${c.items} artículo(s)`);
+    // Un carrito olvidado (tablet dejada con articulos) no frena la actualizacion para siempre.
+    const ultimo = Math.max(c.tocadoEn || 0, c.carritoEn || 0);
+    if (c.items > 0 && ultimo > Date.now() - CARRITO_ABANDONADO_MS) motivos.push(`${nombre}: carrito con ${c.items} artículo(s)`);
     else if (c.tocadoEn && c.tocadoEn > desde) motivos.push(`${nombre}: en uso hace menos de ${segundos} s`);
   }
   if (ultimaEscritura > desde) motivos.push(`cambios por la API hace menos de ${segundos} s`);
@@ -340,8 +344,10 @@ wss.on('connection', (ws, req) => {
     if (!m) return;
     if (m.tipo === 'activo') ws.activoEn = ws.tocadoEn = Date.now();
     // Cuantos articulos tiene el carrito de ese equipo (vive en el navegador).
-    else if (m.tipo === 'carrito') ws.items = Math.max(0, Number(m.items) || 0);
+    else if (m.tipo === 'carrito') { ws.items = Math.max(0, Number(m.items) || 0); ws.carritoEn = Date.now(); }
   });
+  ws.vivo = true;
+  ws.on('pong', () => { ws.vivo = true; });
   ws.on('error', () => { /* el cliente se fue, no es un problema */ });
 });
 
@@ -349,6 +355,10 @@ wss.on('connection', (ws, req) => {
 const pingTimer = setInterval(() => {
   for (const cliente of wss.clients) {
     if (cliente.readyState === 1) {
+      // Sin respuesta al ping anterior: la tablet se durmio o perdio la red; se corta
+      // para que su carrito no quede "abierto" para siempre.
+      if (cliente.vivo === false) { try { cliente.terminate(); } catch (_) { /* ignorado */ } continue; }
+      cliente.vivo = false;
       try { cliente.ping(); } catch (_) { /* ignorado */ }
     }
   }
