@@ -159,13 +159,14 @@ const put = (ruta, cuerpo) => fetch(URL + ruta, {
   await pagina.locator('.marca-tile', { hasText: 'Sancor' }).click();
   await esperar(250);
   chequear('tocar un producto fuera de Ordenar sigue agregando al carrito', await (async () => {
+    // Producto por peso con la balanza en 0 g: /api/balanza/capturar responde 409 (esperado).
     await pagina.locator('#grilla .prod').first().click();
     await esperar(300);
     return true;
   })());
 
   await restaurar();
-  chequear('sin errores de JavaScript', errores.filter((e) => !/\/api\/productos\/codigo\//.test(e) && !/404/.test(e)).length === 0, errores.join(' | '));
+  chequear('sin errores de JavaScript', errores.filter((e) => !/\/api\/productos\/codigo\//.test(e) && !/404|409/.test(e)).length === 0, errores.join(' | '));
   await navegador.close();
   console.log(fallos ? `\n${fallos} falla(s)` : '\ntodo bien');
   terminar(fallos ? 1 : 0);
