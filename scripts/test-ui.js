@@ -268,9 +268,7 @@ function chequear(desc, cond, detalle) {
     const efectivoCent = Number((await pagina.locator('#total').textContent()).replace(/[^\d,]/g, '').replace(',', ''));
     chequear('ya no hay resumen de medios de pago', (await pagina.locator('#mediosResumen').count()) === 0);
     const tarjetaEsperada = Math.floor((efectivoCent * 11050 + 99999999) / 100000000) * 10000;
-    chequear('el botón Tarjeta muestra el total con el recargo',
-      (await pagina.locator('#btnTarjetaTexto').textContent()).replace(/\D/g, '') === String(tarjetaEsperada),
-      await pagina.locator('#btnTarjetaTexto').textContent() + ' vs ' + tarjetaEsperada);
+    chequear('el botón Tarjeta ya no se muestra', await pagina.locator('#btnTarjeta').isHidden());
 
     console.log('\n8. Cerrar la venta');
     const totalFinal = await pagina.locator('#total').textContent();
@@ -285,26 +283,6 @@ function chequear(desc, cond, detalle) {
     console.log(`       (venta cerrada por ${totalFinal.trim()})`);
 
     await pagina.screenshot({ path: path.join(SALIDA, '5-venta-cerrada.png') });
-
-    console.log('\n8b. Cerrar con tarjeta');
-    await pagina.evaluate(() => {
-      const codigo = '7790895000997';
-      for (const ch of codigo) document.dispatchEvent(new KeyboardEvent('keydown', { key: ch, bubbles: true }));
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    });
-    await esperar(700);
-    const efTarj = Number((await pagina.locator('#total').textContent()).replace(/[^\d,]/g, '').replace(',', ''));
-    await pagina.locator('#btnTarjeta').click();
-    await esperar(300);
-    const totTarjEsp = Math.floor((efTarj * 11050 + 99999999) / 100000000) * 10000;
-    chequear('al tocar Tarjeta se ve el monto grande', await pagina.locator('#modalTarjeta').isVisible() && (await pagina.locator('#tarjetaMonto').textContent()).replace(/\D/g, '') === String(totTarjEsp), await pagina.locator('#tarjetaMonto').textContent());
-    await pagina.locator('#tarjetaCobrado').click();
-    await esperar(1200);
-    chequear('la venta con tarjeta se guarda', (await pagina.locator('.aviso').first().textContent()).indexOf('Tarjeta') !== -1, await pagina.locator('.aviso').first().textContent());
-    const ultima = await pagina.evaluate(async () => (await (await fetch('/api/ventas?limite=1')).json()));
-    const vt = ultima.ventas && ultima.ventas[0];
-    const totalTarj = Math.floor((efTarj * 11050 + 99999999) / 100000000) * 10000;
-    chequear('queda con medio tarjeta y el total con recargo', !!vt && vt.medio_pago === 'tarjeta' && vt.total_centavos === totalTarj, `efectivo ${efTarj} esperado ${totalTarj} venta ${JSON.stringify(vt)}`);
 
     console.log('\n9. Buscador oculto y código sin coincidencia');
     chequear('no muestra el buscador ni los botones de simulación',

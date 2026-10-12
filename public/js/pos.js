@@ -940,7 +940,7 @@
   function pintarMedios() {
     var neto = totalCarrito();
     var hay = estado.medios.length > 0 && neto > 0;
-    el.btnTarjeta.hidden = !estado.medios.some(function (m) { return m.clave === 'tarjeta'; });
+    el.btnTarjeta.hidden = true; // boton de tarjeta fuera de la pantalla de cobro
     el.btnTarjeta.disabled = !hay || estado.cerrando;
     if (!hay) { cerrarTarjeta(); return; }
     var tarjeta = plata(totalConMedio(neto, medioBp('tarjeta')));
@@ -1310,7 +1310,7 @@
       if (el.totalMini) el.totalMini.textContent = plata(totalPicada());
     } else {
       var c = estado.carrito.length;
-      el.carritoTitulo.textContent = 'Venta actual';
+      el.carritoTitulo.textContent = '';
       el.carritoContador.textContent = c ? c + (c === 1 ? ' artículo' : ' artículos') : 'Sin artículos';
       if (el.totalMini) el.totalMini.textContent = plata(totalCarrito());
     }
@@ -2144,7 +2144,7 @@
       })
       .catch(function () {
         if (estado.qr !== q) return;
-        estadoQr('Sin conexión con el POS, reintentando…', 'espera'); // la orden sigue viva en el servidor
+        estadoQr('Sin conexión con el POS, reintentando…', ''); // la orden sigue viva en el servidor
         q.timer = setTimeout(consultarQr, estado.qrConsultaMs);
       });
   }

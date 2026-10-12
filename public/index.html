@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0f1419">
 <title>Balanza POS</title>
-<link rel="stylesheet" href="/css/app.css?v=22">
+<link rel="stylesheet" href="/css/app.css?v=23">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
 </head>
 <body>
@@ -173,6 +173,12 @@
         <div class="carrito-titulo" id="carritoTitulo">Venta actual</div>
         <div class="carrito-contador" id="carritoContador">Sin artículos</div>
       </div>
+      <div class="descuento-fila">
+        <button type="button" class="btn-descuento" id="btnDescuento">
+          <span class="desc-ico">%</span><span id="btnDescuentoTexto">Descuento</span>
+        </button>
+        <span class="descuento-monto num" id="descuentoMonto" hidden></span>
+      </div>
       <span class="total-mini num" id="totalMini">$ 0,00</span>
     </div>
 
@@ -184,12 +190,6 @@
     </div>
 
     <div class="carrito-pie" id="ventaPie">
-      <div class="descuento-fila">
-        <button type="button" class="btn-descuento" id="btnDescuento">
-          <span class="desc-ico">%</span><span id="btnDescuentoTexto">Descuento</span>
-        </button>
-        <span class="descuento-monto num" id="descuentoMonto" hidden></span>
-      </div>
       <div class="total-fila">
         <span class="total-label">TOTAL</span>
         <span class="total-valor num" id="total">$ 0,00</span>
@@ -323,6 +323,6 @@
 
 <script src="/js/scanner.js?v=7"></script>
 <script src="/js/camara.js?v=8"></script>
-<script src="/js/pos.js?v=22"></script>
+<script src="/js/pos.js?v=23"></script>
 </body>
 </html>

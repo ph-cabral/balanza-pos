@@ -510,7 +510,8 @@ input  { font-family: inherit; font-size: inherit; }
   border-bottom: 1px solid var(--borde-suave);
 }
 .carrito-titulo { font-size: 17px; font-weight: 600; }
-.carrito-contador { font-size: 13px; color: var(--texto-tenue); }
+.carrito-titulo:empty { display: none; }
+.carrito-contador { font-size: 24px; font-weight: 700; color: var(--texto); }
 
 .carrito-lista {
   flex: 1;
@@ -690,6 +691,9 @@ input  { font-family: inherit; font-size: inherit; }
 .qr-estado { font-size: 15px; font-weight: 600; color: var(--info); }
 .qr-estado.pagado { color: var(--acento-fuerte); }
 .qr-estado.fallo { color: var(--error); }
+/* Esperando el pago: sin leyenda (solo se ve si todavia no hay monto). */
+.qr-estado.espera { display: none; }
+.qr-monto:empty + .qr-estado.espera { display: block; }
 .qr-estado.espera::after {
   content: '';
   display: inline-block;
@@ -706,7 +710,6 @@ input  { font-family: inherit; font-size: inherit; }
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 10px;
 }
 .btn-descuento {
   display: inline-flex;
@@ -714,7 +717,7 @@ input  { font-family: inherit; font-size: inherit; }
   gap: 8px;
   height: 44px;
   padding: 0 16px;
-  max-width: 70%;
+  max-width: 220px;
   background: var(--panel-alto);
   border: 1px solid var(--borde);
   border-radius: var(--radio-chico);
@@ -938,6 +941,7 @@ input  { font-family: inherit; font-size: inherit; }
   .carrito-titulo, .carrito-contador { white-space: nowrap; }
   /* Cerrada muestra el total; abierta no (el total ya esta abajo en grande). */
   .derecha.abierta .total-mini { display: none; }
+  .derecha:not(.abierta) .descuento-fila { display: none; }
 
   /* Cuenta regresiva de la subida automatica, pegada al borde de arriba. */
   .hoja-tiempo {
@@ -1166,6 +1170,7 @@ input  { font-family: inherit; font-size: inherit; }
 .picada-banner span { flex: 1; min-width: 0; }
 
 .modo-picada .carrito-titulo { color: var(--picada); }
+.modo-picada .descuento-fila { display: none; }
 .modo-picada .barra-tiempo i,
 .modo-picada .hoja-tiempo i { background: var(--picada); }
 
