@@ -64,6 +64,15 @@ module.exports = function crearApi({ estaciones, guardarConfig, config, sheets, 
     }
   });
 
+  // Saca un producto de su grupo para mostrarlo en el inicio, junto a los grupos (o lo devuelve).
+  router.put('/productos/:id/inicio', (req, res) => {
+    try {
+      ok(res, { producto: db.fijarEnInicio(Number(req.params.id), req.body.inicio === true || req.body.inicio === 1) });
+    } catch (e) {
+      fallo(res, 400, e.message);
+    }
+  });
+
   // Orden manual de marcas/sueltos de un grupo o de los productos de una marca.
   router.put('/orden-vista', (req, res) => {
     try {

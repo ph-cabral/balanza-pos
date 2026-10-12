@@ -144,10 +144,19 @@ function chequear(desc, cond, detalle) {
     const ordenAntes = await pagina.locator('.grupo-nombre').allTextContents();
     await pagina.locator('#btnOrdenar').click();
     await esperar(200);
+    // Un toque corto en Ordenar entra al grupo (no arrastra); mantener apretado es lo que mueve.
+    await pagina.locator('.grupo').nth(0).click();
+    await esperar(300);
+    chequear('en Ordenar, tocar un grupo lo abre', !(await pagina.locator('#vistaGrupos').isVisible()));
+    await pagina.locator('#btnVolver:visible, #btnVolverMarcas:visible').first().click();
+    await esperar(300);
+    await pagina.locator('#btnOrdenar').click();
+    await esperar(200);
     const a = await pagina.locator('.grupo').nth(0).boundingBox();
     const b = await pagina.locator('.grupo').nth(2).boundingBox();
     await pagina.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
     await pagina.mouse.down();
+    await esperar(500);   // hay que mantener apretado para empezar a mover
     await pagina.mouse.move(b.x + b.width * 0.75, b.y + b.height / 2, { steps: 16 });
     await pagina.mouse.up();
     await esperar(600);

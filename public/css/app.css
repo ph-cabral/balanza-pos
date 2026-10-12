@@ -304,12 +304,16 @@ input  { font-family: inherit; font-size: inherit; }
 .columnas button.activo { background: var(--acento); color: #06140e; }
 .grupo-cuenta { font-size: 13px; color: var(--texto-tenue); font-weight: 600; }
 
-/* Modo ordenar: los grupos se arrastran, por eso dejan de tomar el gesto de
-   scroll. Sin esto la tablet corta el arrastre apenas se mueve el dedo. */
-.grupos.ordenando .grupo,
+/* Modo ordenar: un toque abre el grupo/marca, el scroll sigue andando y el
+   arrastre arranca al mantener apretado (pos.js frena el scroll recien ahi). */
+.grupos.ordenando .grupo, .grupos.ordenando .prod,
 .marcas.ordenando .marca-tile, .marcas.ordenando .prod,
-.grilla.ordenando .prod { touch-action: none; }
-.grupos.ordenando .grupo:not(.hueco),
+.grilla.ordenando .prod {
+  touch-action: pan-y;
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+}
+.grupos.ordenando .grupo:not(.hueco), .grupos.ordenando .prod:not(.hueco),
 .marcas.ordenando .marca-tile:not(.hueco), .marcas.ordenando .prod:not(.hueco),
 .grilla.ordenando .prod:not(.hueco) { animation: temblor .9s ease-in-out infinite; }
 
@@ -333,8 +337,8 @@ input  { font-family: inherit; font-size: inherit; }
 }
 
 /* Boton de cada producto en modo ordenar: sacarlo de su marca o volver a meterlo. */
-.prod-agrupar { display: none; }
-.ordenando .prod-agrupar {
+.prod-agrupar, .prod-inicio { display: none; }
+.ordenando .prod-agrupar, .ordenando .prod-inicio {
   display: block;
   padding: 7px 10px;
   border: 1px solid var(--acento);

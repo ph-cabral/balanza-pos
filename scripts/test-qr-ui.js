@@ -104,10 +104,12 @@ function crearMP() {
     const carritoN = () => pagina.evaluate(() => document.querySelectorAll('#carritoLista .item').length);
 
     const abiertas = () => [...mp.ordenes.values()].filter((o) => o.status === 'created');
-    const esperarBanda = (monto) => pagina.waitForFunction((m) => {
-      const b = document.querySelector('#qrBanda');
-      return b.hidden && document.querySelector('#qrMonto').textContent.includes(m); // la banda no se muestra: ocupa lugar
-    }, monto, { timeout: 10000 });
+    // La banda ya no se muestra (ocupa lugar) y #qrMonto conserva el monto anterior: el texto solo no prueba
+    // que la orden nueva exista. Se espera ademas una orden abierta en MP.
+    const esperarBanda = async (monto) => {
+      await pagina.waitForFunction((m) => document.querySelector('#qrMonto').textContent.includes(m), monto, { timeout: 10000 });
+      for (let i = 0; i < 40 && !abiertas().some((o) => o.total_amount === monto.replace('.', '').replace(',', '.')); i++) await esperar(250);
+    };
 
     console.log('\n1. Sin boton');
     chequear('no existe el boton "Cobrar con QR"', (await pagina.locator('#btnCobrarQr').count()) === 0);

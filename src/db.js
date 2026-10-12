@@ -162,10 +162,17 @@ db.exec(`CREATE INDEX IF NOT EXISTS ix_productos_marca ON productos(marca_id)`);
   if (!cols.includes('agrupar_marca')) db.exec(`ALTER TABLE productos ADD COLUMN agrupar_marca INTEGER NOT NULL DEFAULT 1`);
 }
 
+// --- Migracion: en_inicio (1 = el producto sale de su grupo y se muestra en la pantalla de inicio, junto a los grupos) ---
+// Sin indice: viaja con el listado que el POS ya lee entero.
+{
+  const cols = db.prepare(`PRAGMA table_info(productos)`).all().map((c) => c.name);
+  if (!cols.includes('en_inicio')) db.exec(`ALTER TABLE productos ADD COLUMN en_inicio INTEGER NOT NULL DEFAULT 0`);
+}
+
 // Orden manual de las pantallas del POS (marcas + sueltos de un grupo, productos de una
 // marca). Solo guarda lo que se acomodo: tabla chica, lectura completa en un solo SELECT.
-//   ambito: 'g:<categoria_id>' (marcas y sueltos del grupo) | 'm:<categoria_id>:<marca>'
-//   clave : 'm:<marca>' | 'p:<producto_id>'
+//   ambito: 'i' (inicio: grupos y productos) | 'g:<categoria_id>' (marcas y sueltos del grupo) | 'm:<categoria_id>:<marca>'
+//   clave : 'g:<categoria_id>' (solo en 'i') | 'm:<marca>' | 'p:<producto_id>'
 db.exec(`
 CREATE TABLE IF NOT EXISTS orden_vista (
   ambito TEXT NOT NULL,
@@ -453,36 +460,37 @@ function montoDescuento(d, brutoCentavos) {
 // --- Sentencias preparadas --------------------------------------------------
 const S = {
   listarProductos: db.prepare(`
-    SELECT id, codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo, agrupar_marca
+    SELECT id, codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo, agrupar_marca, en_inicio
     FROM productos
     WHERE activo = 1
     ORDER BY nombre, marca
   `),
 
   fijarAgruparMarca: db.prepare(`UPDATE productos SET agrupar_marca = ? WHERE id = ?`),
+  fijarEnInicio: db.prepare(`UPDATE productos SET en_inicio = ? WHERE id = ?`),
   listarOrdenVista: db.prepare(`SELECT ambito, clave, orden FROM orden_vista`),
   borrarOrdenVista: db.prepare(`DELETE FROM orden_vista WHERE ambito = ?`),
   insertarOrdenVista: db.prepare(`INSERT OR REPLACE INTO orden_vista (ambito, clave, orden) VALUES (?, ?, ?)`),
 
   listarTodos: db.prepare(`
-    SELECT id, codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo, agrupar_marca
+    SELECT id, codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo, agrupar_marca, en_inicio
     FROM productos
     ORDER BY activo DESC, nombre, marca
   `),
 
   porId: db.prepare(`
-    SELECT id, codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo, agrupar_marca
+    SELECT id, codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo, agrupar_marca, en_inicio
     FROM productos WHERE id = ?
   `),
 
   porCodigo: db.prepare(`
-    SELECT id, codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo, agrupar_marca
+    SELECT id, codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo, agrupar_marca, en_inicio
     FROM productos WHERE codigo_barras = ? AND activo = 1
   `),
 
   insertarProducto: db.prepare(`
-    INSERT INTO productos (codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo, agrupar_marca)
-    VALUES (@codigo_barras, @nombre, @marca, @marca_id, @contenido, @sabor, @categoria, @categoria_id, @tipo, @precio_centavos, @activo, @agrupar_marca)
+    INSERT INTO productos (codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo, agrupar_marca, en_inicio)
+    VALUES (@codigo_barras, @nombre, @marca, @marca_id, @contenido, @sabor, @categoria, @categoria_id, @tipo, @precio_centavos, @activo, @agrupar_marca, @en_inicio)
   `),
 
   actualizarProducto: db.prepare(`
@@ -499,6 +507,7 @@ const S = {
       precio_centavos = @precio_centavos,
       activo          = @activo,
       agrupar_marca   = @agrupar_marca,
+      en_inicio       = @en_inicio,
       actualizado_en  = datetime('now','localtime')
     WHERE id = @id
   `),
@@ -511,7 +520,7 @@ const S = {
     SELECT c.id, c.nombre, c.icono, c.orden, c.activo,
            COUNT(p.id) AS productos
     FROM categorias c
-    LEFT JOIN productos p ON p.categoria_id = c.id AND p.activo = 1
+    LEFT JOIN productos p ON p.categoria_id = c.id AND p.activo = 1 AND p.en_inicio = 0
     WHERE c.activo = 1
     GROUP BY c.id
     ORDER BY c.orden, c.id
@@ -835,6 +844,7 @@ function normalizarProducto(p) {
     precio_centavos: Math.max(0, Math.round(Number(p.precio_centavos) || 0)),
     activo: p.activo === 0 || p.activo === false ? 0 : 1,
     agrupar_marca: p.agrupar_marca === 0 || p.agrupar_marca === false || p.agrupar_marca === '0' ? 0 : 1,
+    en_inicio: p.en_inicio === 1 || p.en_inicio === true || p.en_inicio === '1' ? 1 : 0,
   };
 }
 
@@ -943,12 +953,12 @@ const api = {
 
   /** Reemplaza el orden de un ambito entero (una transaccion, DELETE + INSERTs). */
   guardarOrdenVista: db.transaction((ambito, claves) => {
-    if (typeof ambito !== 'string' || !/^(g:\d+|m:\d+:.{1,100})$/.test(ambito)) throw new Error('Ambito invalido');
+    if (typeof ambito !== 'string' || !/^(i|g:\d+|m:\d+:.{1,100})$/.test(ambito)) throw new Error('Ambito invalido');
     if (!Array.isArray(claves) || claves.length > 5000) throw new Error('Orden invalido');
     S.borrarOrdenVista.run(ambito);
     let n = 0;
     for (const c of claves) {
-      if (typeof c !== 'string' || !/^(m:.{1,100}|p:\d+)$/.test(c)) throw new Error('Clave invalida');
+      if (typeof c !== 'string' || !/^(m:.{1,100}|p:\d+|g:\d+)$/.test(c)) throw new Error('Clave invalida');
       S.insertarOrdenVista.run(ambito, c, ++n);
     }
     return n;
@@ -958,6 +968,13 @@ const api = {
   fijarAgruparMarca(id, agrupar) {
     if (!S.porId.get(id)) throw new Error('Producto no encontrado');
     S.fijarAgruparMarca.run(agrupar ? 1 : 0, id);
+    return S.porId.get(id);
+  },
+
+  /** El producto sale de su grupo y se muestra en la pantalla de inicio (true), o vuelve a su grupo (false). */
+  fijarEnInicio(id, enInicio) {
+    if (!S.porId.get(id)) throw new Error('Producto no encontrado');
+    S.fijarEnInicio.run(enInicio ? 1 : 0, id);
     return S.porId.get(id);
   },
   productoPorCodigo: (codigo) => S.porCodigo.get(codigo),

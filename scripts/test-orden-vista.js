@@ -52,6 +52,8 @@ const put = (ruta, cuerpo) => fetch(URL + ruta, {
 
   async function restaurar() {
     for (const p of [roquefort, sardo, portSalut]) await put('/api/productos/' + p.id + '/agrupar', { agrupar: true });
+    for (const p of [roquefort, sardo, portSalut]) await put('/api/productos/' + p.id + '/inicio', { inicio: false });
+    await put('/api/orden-vista', { ambito: 'i', claves: [] });
     await put('/api/orden-vista', { ambito: ambGrupo, claves: [] });
     await put('/api/orden-vista', { ambito: ambSancor, claves: [] });
   }
@@ -92,6 +94,7 @@ const put = (ruta, cuerpo) => fetch(URL + ruta, {
     const ba = await t.nth(a).boundingBox();
     await pagina.mouse.move(bd.x + bd.width / 2, bd.y + bd.height / 2);
     await pagina.mouse.down();
+    await esperar(500);   // hay que mantener apretado para empezar a mover
     await pagina.mouse.move(ba.x + ba.width * 0.85, ba.y + ba.height / 2, { steps: 16 });
     await pagina.mouse.up();
     await esperar(500);
@@ -164,6 +167,46 @@ const put = (ruta, cuerpo) => fetch(URL + ruta, {
     await esperar(300);
     return true;
   })());
+
+  console.log('\n6. Articulo en el inicio');
+  await restaurar();
+  const cuentaQuesos = async () => (await (await fetch(URL + '/api/productos')).json()).categorias.find((g) => g.id === quesos.id).productos;
+  const antesQ = await cuentaQuesos();
+  r = await put('/api/productos/' + sardo.id + '/inicio', { inicio: true });
+  chequear('la API lo saca al inicio', r.ok && r.producto.en_inicio === 1, JSON.stringify(r));
+  r = await put('/api/productos/999999/inicio', { inicio: true });
+  chequear('producto inexistente falla', r.ok === false);
+  chequear('el grupo ya no lo cuenta', (await cuentaQuesos()) === antesQ - 1);
+  await pagina.goto(URL, { waitUntil: 'networkidle' });
+  await pagina.waitForSelector('#grupos .grupo');
+  chequear('aparece en el inicio como tile de producto', (await pagina.locator('#grupos .prod', { hasText: 'Queso sardo' }).count()) === 1);
+  await pagina.locator('.grupo', { hasText: 'Quesos' }).first().click();
+  await esperar(250);
+  await pagina.locator('#marcas .marca-tile', { hasText: 'Sancor' }).click();
+  await esperar(250);
+  chequear('ya no esta en la marca Sancor', !(await nombresGrilla()).includes('Queso sardo'));
+  await pagina.locator('#btnVolver').click();
+  await pagina.locator('#btnVolverMarcas').click();
+  await esperar(250);
+  r = await put('/api/orden-vista', { ambito: 'i', claves: ['p:' + sardo.id] });
+  chequear('guarda el orden del inicio', r.ok, JSON.stringify(r));
+  await pagina.goto(URL, { waitUntil: 'networkidle' });
+  await pagina.waitForSelector('#grupos .grupo');
+  chequear('acomodado primero entre los grupos', await pagina.locator('#grupos').evaluate((c) => c.firstElementChild.classList.contains('prod')));
+  await pagina.locator('#btnOrdenar').click();
+  await pagina.locator('#grupos .prod', { hasText: 'Queso sardo' }).locator('.prod-inicio').click({ force: true });
+  await esperar(300);
+  chequear('"Volver a su grupo" lo saca del inicio', (await pagina.locator('#grupos .prod', { hasText: 'Queso sardo' }).count()) === 0);
+  const gi = await (await fetch(URL + '/api/productos')).json();
+  chequear('el servidor guardo el cambio', gi.productos.find((p) => p.id === sardo.id).en_inicio === 0 && (await cuentaQuesos()) === antesQ);
+  await pagina.locator('.grupo', { hasText: 'Quesos' }).first().click({ force: true });
+  await esperar(250);
+  await pagina.locator('#marcas .marca-tile', { hasText: 'Sancor' }).click({ force: true });
+  await esperar(250);
+  await pagina.locator('#grilla .prod', { hasText: 'Queso sardo' }).locator('.prod-inicio').click({ force: true });
+  await esperar(300);
+  chequear('"Sacar al inicio" desde la marca', !(await nombresGrilla()).includes('Queso sardo') &&
+    (await (await fetch(URL + '/api/productos')).json()).productos.find((p) => p.id === sardo.id).en_inicio === 1);
 
   await restaurar();
   chequear('sin errores de JavaScript', errores.filter((e) => !/\/api\/productos\/codigo\//.test(e) && !/404|409/.test(e)).length === 0, errores.join(' | '));

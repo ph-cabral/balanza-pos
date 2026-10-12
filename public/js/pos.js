@@ -37,6 +37,7 @@
     marcaNombre: '',
     vista: 'grupos',
     ordenando: false,
+    finArrastre: 0,       // cuando se solto el ultimo arrastre (para ignorar el click que le sigue)
     // Orden manual de marcas/sueltos/productos: { ambito: { clave: posicion } }.
     orden: {},
     config: { venta: { avisarSiNoTara: true, umbralTaraKg: 0.02, segundosCarrito: 3 } },
@@ -554,7 +555,7 @@
     var mapa = {}, marcas = [], sueltos = [];
     for (var i = 0; i < estado.productos.length; i++) {
       var p = estado.productos[i];
-      if (p.categoria_id !== estado.grupoId) continue;
+      if (p.categoria_id !== estado.grupoId || p.en_inicio === 1) continue;
       if (vaSuelto(p)) { sueltos.push(p); continue; }
       var k = claveMarca(p);
       var m = mapa[k];
@@ -623,6 +624,31 @@
       });
   }
 
+  /** Saca el producto de su grupo (queda en el inicio, junto a los grupos) o lo devuelve. */
+  function cambiarInicio(p) {
+    var antes = p.en_inicio === 1 ? 1 : 0;
+    function aplicar(valor) {
+      p.en_inicio = valor;
+      var g = p.categoria_id != null ? grupoPorId(p.categoria_id) : null;
+      if (g) g.productos += valor ? -1 : 1;
+      pintarGrupos();
+      if (estado.vista === 'productos' && estado.filtro.trim()) pintarGrilla();
+      else if (estado.vista !== 'grupos') reabrirGrupo();
+    }
+    aplicar(antes ? 0 : 1);
+    fetch('/api/productos/' + p.id + '/inicio', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inicio: p.en_inicio === 1 }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (!d.ok) throw new Error(d.error); })
+      .catch(function (e) {
+        aplicar(antes);
+        avisar('No se pudo guardar: ' + e.message, 'error');
+      });
+  }
+
   /** Repinta la pantalla del grupo abierto despues de cambiar que va suelto (el modo ordenar sigue). */
   function reabrirGrupo() {
     if (estado.grupoId == null) return;
@@ -669,7 +695,13 @@
   function pintarGrupos() {
     el.grupos.innerHTML = '';
 
-    if (!estado.grupos.length) {
+    // Inicio: los grupos y, al lado, los productos que se sacaron de su grupo (orden a mano 'i').
+    var items = estado.grupos.map(function (g) { return { clave: 'g:' + g.id, g: g }; })
+      .concat(estado.productos.filter(function (p) { return p.en_inicio === 1; })
+        .map(function (p) { return { clave: 'p:' + p.id, p: p }; }));
+    items = ordenarPor(items, 'i', function (it) { return it.clave; });
+
+    if (!items.length) {
       var v = document.createElement('div');
       v.className = 'vacio';
       v.textContent = 'Todavía no hay grupos cargados. Entrá a Administrar para crearlos.';
@@ -678,7 +710,9 @@
     }
 
     var frag = document.createDocumentFragment();
-    estado.grupos.forEach(function (g) {
+    items.forEach(function (it) {
+      if (it.p) { frag.appendChild(tileProducto(it.p)); return; }
+      var g = it.g;
       var b = document.createElement('button');
       b.className = 'grupo';
       b.dataset.id = g.id;
@@ -700,7 +734,7 @@
       b.appendChild(nom);
       b.appendChild(n);
       b.addEventListener('click', function () {
-        if (estado.ordenando) return;   // en modo ordenar, tocar no abre el grupo
+        if (Date.now() - estado.finArrastre < 400) return;   // el click que sigue a soltar un arrastre
         abrirGrupo(g.id);
       });
       frag.appendChild(b);
@@ -734,7 +768,7 @@
       b.appendChild(nom);
       b.appendChild(n);
       b.addEventListener('click', function () {
-        if (estado.ordenando) return;   // en modo ordenar, tocar no abre la marca
+        if (Date.now() - estado.finArrastre < 400) return;   // el click que sigue a soltar un arrastre
         abrirMarca(m);
       });
       frag.appendChild(b);
@@ -797,7 +831,7 @@
     var f = estado.filtro.toLowerCase().trim();
     return estado.productos.filter(function (p) {
       if (f) return (p.nombre + ' ' + p.marca + ' ' + (p.sabor || '') + ' ' + (p.contenido || '') + ' ' + p.categoria).toLowerCase().indexOf(f) !== -1;
-      if (p.categoria_id !== estado.grupoId) return false;
+      if (p.categoria_id !== estado.grupoId || p.en_inicio === 1) return false;
       return estado.marcaSel === null || (claveMarca(p) === estado.marcaSel && p.agrupar_marca !== 0);
     });
   }
@@ -844,6 +878,13 @@
       ag.addEventListener('click', function (e) { e.stopPropagation(); cambiarAgrupar(p); });
       b.appendChild(ag);
     }
+    // Sacarlo de su grupo para mostrarlo en el inicio, junto a los grupos (o devolverlo).
+    var ini = document.createElement('span');
+    ini.className = 'prod-inicio';
+    ini.setAttribute('role', 'button');
+    ini.textContent = p.en_inicio === 1 ? 'Volver a su grupo' : 'Sacar al inicio';
+    ini.addEventListener('click', function (e) { e.stopPropagation(); cambiarInicio(p); });
+    b.insertBefore(ini, b.firstChild);   // arriba: el centro del tile (donde se agarra para arrastrar) queda libre
     b.addEventListener('click', function () {
       if (estado.ordenando) return;   // en modo ordenar, tocar no agrega
       agregarProducto(p);
@@ -904,15 +945,16 @@
 
   function textoAyudaGrupos() {
     el.ayudaOrden.textContent = estado.ordenando
-      ? 'Arrastrá los grupos para acomodarlos'
+      ? 'Mantené apretado y arrastrá para acomodar · tocá un grupo para entrar · el botón de cada artículo lo saca al inicio o lo devuelve a su grupo'
       : (estado.camara ? 'Mantené apretada la pantalla para escanear' : '');
     document.querySelectorAll('.ayuda-ordenar').forEach(function (n) {
-      n.textContent = 'Arrastrá para acomodar · el botón de cada artículo lo saca o lo mete en su marca';
+      n.textContent = 'Mantené apretado y arrastrá para acomodar · tocá una marca para entrar · los botones de cada artículo lo sacan de su marca o lo pasan al inicio';
       n.hidden = !estado.ordenando;
     });
   }
 
   var SEL_TILE = '.grupo, .marca-tile, .prod';
+  var MANTENER_MS = 350;   // cuanto hay que mantener apretado un tile para empezar a moverlo
 
   function habilitarArrastre() {
     var arr = null;       // arrastre en curso
@@ -969,32 +1011,71 @@
     }
 
     // Los grupos, las marcas (con sus sueltos) y la grilla de productos se acomodan igual.
+    // Un toque corto no arrastra (los grupos y marcas se abren); el arrastre
+    // arranca al mantener apretado y quieto, y mover antes de eso es scroll.
+    var espera = null;    // { cont, tile, x, y, id, timer } mientras se espera el "mantener"
+
+    function cancelarEspera() {
+      if (espera) { clearTimeout(espera.timer); espera = null; }
+    }
+
     [el.grupos, el.marcas, el.grilla].forEach(function (cont) {
       cont.addEventListener('pointerdown', function (e) {
-        if (!estado.ordenando || arr) return;
-        if (e.target.closest && e.target.closest('.prod-agrupar')) return;   // ese es un toque, no un arrastre
+        if (!estado.ordenando || arr || e.button > 0) return;
+        if (e.target.closest && e.target.closest('.prod-agrupar, .prod-inicio')) return;   // ese es un toque, no un arrastre
         var tile = e.target.closest ? e.target.closest(SEL_TILE) : null;
         if (!tile || tile.classList.contains('hueco') || tile.parentNode !== cont) return;
-        iniciar(cont, tile, e);
+        cancelarEspera();
+        var w = { cont: cont, tile: tile, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, id: e.pointerId };
+        w.timer = setTimeout(function () {
+          if (espera !== w || !estado.ordenando) return;
+          espera = null;
+          if (navigator.vibrate) { try { navigator.vibrate(20); } catch (err) {} }
+          iniciar(cont, tile, { clientX: w.x, clientY: w.y, pointerId: w.id });
+        }, MANTENER_MS);
+        espera = w;
       });
 
       cont.addEventListener('pointermove', function (e) {
-        if (arr && arr.cont === cont) mover(e);
+        if (arr && arr.cont === cont) { mover(e); return; }
+        if (espera && espera.cont === cont) {
+          espera.x = e.clientX; espera.y = e.clientY;
+          // Se movio antes de tiempo: es scroll (o un deslizamiento), no un arrastre.
+          if (Math.abs(e.clientX - espera.x0) > 10 || Math.abs(e.clientY - espera.y0) > 10) cancelarEspera();
+        }
       });
 
-      cont.addEventListener('pointerup', function () { if (arr && arr.cont === cont) soltar(); });
-      cont.addEventListener('pointercancel', function () { if (arr && arr.cont === cont) soltar(); });
+      function fin() {
+        cancelarEspera();
+        if (arr && arr.cont === cont) { estado.finArrastre = Date.now(); soltar(); }
+      }
+      cont.addEventListener('pointerup', fin);
+      cont.addEventListener('pointercancel', fin);
+
+      // Ya arrastrando, el navegador no debe tomar el gesto como scroll.
+      cont.addEventListener('touchmove', function (e) {
+        if (arr && e.cancelable) e.preventDefault();
+      }, { passive: false });
+      // Mantener apretado no debe abrir el menu del sistema.
+      cont.addEventListener('contextmenu', function (e) {
+        if (estado.ordenando) e.preventDefault();
+      });
     });
   }
 
   function guardarOrden() {
     if (estado.vista !== 'grupos') { guardarOrdenVista(); return; }
 
-    var ids = [];
-    el.grupos.querySelectorAll('.grupo').forEach(function (n) {
-      if (n.dataset.id) ids.push(Number(n.dataset.id));
+    var ids = [], claves = [];
+    el.grupos.querySelectorAll('.grupo, .prod').forEach(function (n) {
+      if (n.classList.contains('hueco')) return;
+      if (n.classList.contains('grupo') && n.dataset.id) { ids.push(Number(n.dataset.id)); claves.push('g:' + n.dataset.id); }
+      else if (n.dataset.clave) claves.push(n.dataset.clave);
     });
     if (!ids.length) return;
+
+    // Hay productos en el inicio: el orden mezclado (grupos + productos) se guarda aparte.
+    if (claves.length > ids.length) enviarOrdenVista('i', claves);
 
     // Ordenamos tambien el estado local: la tablet ya muestra el orden nuevo y
     // no depende de la respuesta del servidor para seguir vendiendo.
@@ -1020,6 +1101,11 @@
       if (n.dataset.clave && !n.classList.contains('hueco')) claves.push(n.dataset.clave);
     });
     if (!claves.length) return;
+    enviarOrdenVista(ambito, claves);
+  }
+
+  function enviarOrdenVista(ambito, claves) {
+    var mapa = {};
     claves.forEach(function (c, i) { mapa[c] = i + 1; });
     estado.orden[ambito] = mapa;
 
