@@ -79,6 +79,10 @@ jobs:
         run: npm run test-picada
         env: { POS_SIN_SHEETS: '1' }
 
+      - name: Orden y agrupación de marcas (Playwright)
+        run: npm run test-orden-vista
+        env: { POS_SIN_SHEETS: '1' }
+
       - name: Cobro con QR en pantalla (Playwright)
         run: npm run test-qr-ui
         env: { POS_SIN_SHEETS: '1' }

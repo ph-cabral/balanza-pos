@@ -155,6 +155,26 @@ db.exec(`CREATE INDEX IF NOT EXISTS ix_productos_marca ON productos(marca_id)`);
   if (!cols.includes('sabor')) db.exec(`ALTER TABLE productos ADD COLUMN sabor TEXT NOT NULL DEFAULT ''`);
 }
 
+// --- Migracion: agrupar_marca (1 = va dentro de su marca, 0 = suelto en el grupo) ---
+// Sin indice: viaja con el listado que el POS ya lee entero.
+{
+  const cols = db.prepare(`PRAGMA table_info(productos)`).all().map((c) => c.name);
+  if (!cols.includes('agrupar_marca')) db.exec(`ALTER TABLE productos ADD COLUMN agrupar_marca INTEGER NOT NULL DEFAULT 1`);
+}
+
+// Orden manual de las pantallas del POS (marcas + sueltos de un grupo, productos de una
+// marca). Solo guarda lo que se acomodo: tabla chica, lectura completa en un solo SELECT.
+//   ambito: 'g:<categoria_id>' (marcas y sueltos del grupo) | 'm:<categoria_id>:<marca>'
+//   clave : 'm:<marca>' | 'p:<producto_id>'
+db.exec(`
+CREATE TABLE IF NOT EXISTS orden_vista (
+  ambito TEXT NOT NULL,
+  clave  TEXT NOT NULL,
+  orden  INTEGER NOT NULL,
+  PRIMARY KEY (ambito, clave)
+) WITHOUT ROWID;
+`);
+
 // Da de alta en "marcas" cada texto distinto que haya en productos.marca y
 // enlaza marca_id. Idempotente: no repite marcas ya migradas.
 db.transaction(() => {
@@ -433,31 +453,36 @@ function montoDescuento(d, brutoCentavos) {
 // --- Sentencias preparadas --------------------------------------------------
 const S = {
   listarProductos: db.prepare(`
-    SELECT id, codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo
+    SELECT id, codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo, agrupar_marca
     FROM productos
     WHERE activo = 1
     ORDER BY nombre, marca
   `),
 
+  fijarAgruparMarca: db.prepare(`UPDATE productos SET agrupar_marca = ? WHERE id = ?`),
+  listarOrdenVista: db.prepare(`SELECT ambito, clave, orden FROM orden_vista`),
+  borrarOrdenVista: db.prepare(`DELETE FROM orden_vista WHERE ambito = ?`),
+  insertarOrdenVista: db.prepare(`INSERT OR REPLACE INTO orden_vista (ambito, clave, orden) VALUES (?, ?, ?)`),
+
   listarTodos: db.prepare(`
-    SELECT id, codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo
+    SELECT id, codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo, agrupar_marca
     FROM productos
     ORDER BY activo DESC, nombre, marca
   `),
 
   porId: db.prepare(`
-    SELECT id, codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo
+    SELECT id, codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo, agrupar_marca
     FROM productos WHERE id = ?
   `),
 
   porCodigo: db.prepare(`
-    SELECT id, codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo
+    SELECT id, codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo, agrupar_marca
     FROM productos WHERE codigo_barras = ? AND activo = 1
   `),
 
   insertarProducto: db.prepare(`
-    INSERT INTO productos (codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo)
-    VALUES (@codigo_barras, @nombre, @marca, @marca_id, @contenido, @sabor, @categoria, @categoria_id, @tipo, @precio_centavos, @activo)
+    INSERT INTO productos (codigo_barras, nombre, marca, marca_id, contenido, sabor, categoria, categoria_id, tipo, precio_centavos, activo, agrupar_marca)
+    VALUES (@codigo_barras, @nombre, @marca, @marca_id, @contenido, @sabor, @categoria, @categoria_id, @tipo, @precio_centavos, @activo, @agrupar_marca)
   `),
 
   actualizarProducto: db.prepare(`
@@ -473,6 +498,7 @@ const S = {
       tipo            = @tipo,
       precio_centavos = @precio_centavos,
       activo          = @activo,
+      agrupar_marca   = @agrupar_marca,
       actualizado_en  = datetime('now','localtime')
     WHERE id = @id
   `),
@@ -808,6 +834,7 @@ function normalizarProducto(p) {
     tipo,
     precio_centavos: Math.max(0, Math.round(Number(p.precio_centavos) || 0)),
     activo: p.activo === 0 || p.activo === false ? 0 : 1,
+    agrupar_marca: p.agrupar_marca === 0 || p.agrupar_marca === false || p.agrupar_marca === '0' ? 0 : 1,
   };
 }
 
@@ -906,6 +933,33 @@ const api = {
   listarProductos: () => S.listarProductos.all(),
   listarTodosLosProductos: () => S.listarTodos.all(),
   productoPorId: (id) => S.porId.get(id),
+
+  /** Orden manual de las pantallas del POS: { ambito: { clave: posicion } }. */
+  ordenVista() {
+    const mapa = {};
+    for (const f of S.listarOrdenVista.all()) (mapa[f.ambito] ||= {})[f.clave] = f.orden;
+    return mapa;
+  },
+
+  /** Reemplaza el orden de un ambito entero (una transaccion, DELETE + INSERTs). */
+  guardarOrdenVista: db.transaction((ambito, claves) => {
+    if (typeof ambito !== 'string' || !/^(g:\d+|m:\d+:.{1,100})$/.test(ambito)) throw new Error('Ambito invalido');
+    if (!Array.isArray(claves) || claves.length > 5000) throw new Error('Orden invalido');
+    S.borrarOrdenVista.run(ambito);
+    let n = 0;
+    for (const c of claves) {
+      if (typeof c !== 'string' || !/^(m:.{1,100}|p:\d+)$/.test(c)) throw new Error('Clave invalida');
+      S.insertarOrdenVista.run(ambito, c, ++n);
+    }
+    return n;
+  }),
+
+  /** Un producto con marca va dentro de ella (true) o suelto en el grupo (false). */
+  fijarAgruparMarca(id, agrupar) {
+    if (!S.porId.get(id)) throw new Error('Producto no encontrado');
+    S.fijarAgruparMarca.run(agrupar ? 1 : 0, id);
+    return S.porId.get(id);
+  },
   productoPorCodigo: (codigo) => S.porCodigo.get(codigo),
 
   // --- Grupos -----------------------------------------------------------

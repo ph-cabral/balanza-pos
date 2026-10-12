@@ -15,6 +15,7 @@
     "test-grupos": "node scripts/test-grupos.js",
     "test-ui": "node scripts/test-ui.js",
     "test-picada": "node scripts/test-picada.js",
+    "test-orden-vista": "node scripts/test-orden-vista.js",
     "empaquetar": "node scripts/empaquetar.js",
     "test-estaciones": "node scripts/test-estaciones.js",
     "test-deploy": "node scripts/test-deploy.js",

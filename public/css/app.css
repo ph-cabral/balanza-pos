@@ -306,10 +306,14 @@ input  { font-family: inherit; font-size: inherit; }
 
 /* Modo ordenar: los grupos se arrastran, por eso dejan de tomar el gesto de
    scroll. Sin esto la tablet corta el arrastre apenas se mueve el dedo. */
-.grupos.ordenando .grupo { touch-action: none; }
-.grupos.ordenando .grupo:not(.hueco) { animation: temblor .9s ease-in-out infinite; }
+.grupos.ordenando .grupo,
+.marcas.ordenando .marca-tile, .marcas.ordenando .prod,
+.grilla.ordenando .prod { touch-action: none; }
+.grupos.ordenando .grupo:not(.hueco),
+.marcas.ordenando .marca-tile:not(.hueco), .marcas.ordenando .prod:not(.hueco),
+.grilla.ordenando .prod:not(.hueco) { animation: temblor .9s ease-in-out infinite; }
 
-.grupo.arrastrando {
+.grupo.arrastrando, .marca-tile.arrastrando, .prod.arrastrando {
   z-index: 60;
   opacity: .96;
   border-color: var(--acento);
@@ -317,7 +321,7 @@ input  { font-family: inherit; font-size: inherit; }
   animation: none;
 }
 
-.grupo.hueco {
+.grupo.hueco, .marca-tile.hueco, .prod.hueco {
   background: transparent;
   border: 2px dashed var(--borde);
   border-left: 2px dashed var(--borde);
@@ -327,6 +331,21 @@ input  { font-family: inherit; font-size: inherit; }
   0%, 100% { transform: rotate(-.5deg); }
   50%      { transform: rotate(.5deg); }
 }
+
+/* Boton de cada producto en modo ordenar: sacarlo de su marca o volver a meterlo. */
+.prod-agrupar { display: none; }
+.ordenando .prod-agrupar {
+  display: block;
+  padding: 7px 10px;
+  border: 1px solid var(--acento);
+  border-radius: 8px;
+  color: var(--acento-fuerte);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+.ayuda-ordenar { font-size: 13px; font-weight: 700; color: var(--acento); cursor: default; }
+.ayuda-ordenar[hidden] { display: none; }
 
 /* ---------- Marcas de un grupo ---------- */
 
@@ -612,8 +631,10 @@ input  { font-family: inherit; font-size: inherit; }
 .total-label { font-size: 15px; color: var(--texto-medio); font-weight: 600; }
 .total-valor { font-size: 40px; font-weight: 700; letter-spacing: -1px; }
 
+.cobrar-fila { display: flex; gap: 8px; }
 .btn-cobrar {
-  width: 100%;
+  flex: 3 1 0;
+  min-width: 0;
   height: 72px;
   display: flex;
   align-items: center;
@@ -674,19 +695,25 @@ input  { font-family: inherit; font-size: inherit; }
 .qr-banda[hidden] { display: none; }
 .qr-banda svg { width: 28px; height: 28px; flex: none; color: var(--info); }
 .qr-banda-txt { min-width: 0; flex: 1; }
-.qr-boton {
-  flex: none;
-  padding: 10px 16px;
-  font: inherit;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--texto);
-  background: var(--panel);
-  border: 2px solid var(--info);
+/* Boton QR junto a "Cerrar venta" (1/4): azul = activarlo, rojo = cancelarlo. */
+.btn-qr {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--info);
+  border: none;
   border-radius: var(--radio);
+  color: #fff;
   cursor: pointer;
+  transition: transform .06s, filter .12s;
 }
-.qr-boton:active { filter: brightness(1.2); }
+.btn-qr[hidden] { display: none; }
+.btn-qr svg { width: 34px; height: 34px; }
+.btn-qr.activo { background: var(--error); }
+.btn-qr:active { transform: scale(.97); }
+.btn-qr:disabled { background: var(--panel-alto); color: var(--texto-tenue); }
 .qr-monto { font-size: 30px; font-weight: 700; letter-spacing: -.5px; }
 .qr-estado { font-size: 15px; font-weight: 600; color: var(--info); }
 .qr-estado.pagado { color: var(--acento-fuerte); }

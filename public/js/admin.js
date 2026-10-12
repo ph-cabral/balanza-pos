@@ -659,6 +659,7 @@
       $('prodMarca').appendChild(o);
     }
     $('prodMarca').value = p.marca_id || '';
+    $('prodAgrupar').value = p.agrupar_marca === 0 ? '0' : '1';
     // Si el grupo del producto fue dado de baja, no esta en el <select>: se
     // agrega igual para no cambiarlo sin querer al editar.
     if (p.categoria_id && !estado.grupos.some(function (g) { return g.id === p.categoria_id && g.activo; })) {
@@ -727,6 +728,7 @@
     var cuerpo = {
       nombre: $('prodNombre').value,
       marca_id: $('prodMarca').value || null,
+      agrupar_marca: Number($('prodAgrupar').value),
       sabor: $('prodSabor').value,
       contenido: $('prodContenido').value,
       categoria_id: $('prodCategoria').value || null,

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0f1419">
 <title>Balanza POS</title>
-<link rel="stylesheet" href="/css/app.css?v=23">
+<link rel="stylesheet" href="/css/app.css?v=25">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
 </head>
 <body>
@@ -114,6 +114,7 @@
         <div class="vista-cab">
           <button class="btn chico volver" id="btnVolverMarcas">‹ Grupos</button>
           <div class="vista-titulo" id="tituloMarcas">—</div>
+          <div class="vista-ayuda ayuda-ordenar" hidden></div>
         </div>
         <div class="marcas" id="marcas"></div>
       </section>
@@ -123,6 +124,7 @@
         <div class="vista-cab">
           <button class="btn chico volver" id="btnVolver">‹ Grupos</button>
           <div class="vista-titulo" id="tituloGrupo">—</div>
+          <div class="vista-ayuda ayuda-ordenar" hidden></div>
         </div>
         <div class="grilla" id="grilla"></div>
       </section>
@@ -194,19 +196,29 @@
         <span class="total-label">TOTAL</span>
         <span class="total-valor num" id="total">$ 0,00</span>
       </div>
-      <button class="btn-cobrar" id="btnCobrar" disabled>
-        <!-- Caja registradora -->
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M3 21h18"/>
-          <path d="M4 21V12a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v9"/>
-          <path d="M7 11V7a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v4"/>
-          <path d="M9 15h2"/>
-          <path d="M13 15h2"/>
-          <path d="M9 18h6"/>
-        </svg>
-        <span id="btnCobrarTexto">Cerrar venta</span>
-      </button>
+      <div class="cobrar-fila">
+        <button class="btn-cobrar" id="btnCobrar" disabled>
+          <!-- Caja registradora -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 21h18"/>
+            <path d="M4 21V12a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v9"/>
+            <path d="M7 11V7a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v4"/>
+            <path d="M9 15h2"/>
+            <path d="M13 15h2"/>
+            <path d="M9 18h6"/>
+          </svg>
+          <span id="btnCobrarTexto">Cerrar venta</span>
+        </button>
+        <!-- QR de Mercado Pago: azul = activarlo, rojo = cancelarlo (solo si mercadopago esta habilitado) -->
+        <button type="button" class="btn-qr" id="qrBoton" aria-label="Generar QR" hidden disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+            <rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h1"/>
+          </svg>
+        </button>
+      </div>
       <button class="btn-tarjeta" id="btnTarjeta" disabled hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -225,7 +237,6 @@
           <div class="qr-monto num" id="qrMonto"></div>
           <div class="qr-estado" id="qrEstado"></div>
         </div>
-        <button type="button" class="qr-boton" id="qrBoton">Cancelar QR</button>
       </div>
     </div>
 
@@ -323,6 +334,6 @@
 
 <script src="/js/scanner.js?v=7"></script>
 <script src="/js/camara.js?v=8"></script>
-<script src="/js/pos.js?v=23"></script>
+<script src="/js/pos.js?v=25"></script>
 </body>
 </html>

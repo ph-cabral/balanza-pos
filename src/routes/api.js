@@ -22,7 +22,7 @@ module.exports = function crearApi({ estaciones, guardarConfig, config, sheets, 
 
   // Catalogo del POS: solo activos. Es la consulta mas frecuente.
   router.get('/productos', (_req, res) => {
-    ok(res, { productos: db.listarProductos(), categorias: db.categorias() });
+    ok(res, { productos: db.listarProductos(), categorias: db.categorias(), orden: db.ordenVista() });
   });
 
   // Vista de administracion: incluye los dados de baja.
@@ -52,6 +52,24 @@ module.exports = function crearApi({ estaciones, guardarConfig, config, sheets, 
     } catch (e) {
       const dup = /UNIQUE/i.test(e.message);
       fallo(res, 400, dup ? 'Ya existe un producto con ese codigo de barras' : e.message);
+    }
+  });
+
+  // Saca un producto de su marca (queda suelto en el grupo) o lo vuelve a meter.
+  router.put('/productos/:id/agrupar', (req, res) => {
+    try {
+      ok(res, { producto: db.fijarAgruparMarca(Number(req.params.id), req.body.agrupar !== false && req.body.agrupar !== 0) });
+    } catch (e) {
+      fallo(res, 400, e.message);
+    }
+  });
+
+  // Orden manual de marcas/sueltos de un grupo o de los productos de una marca.
+  router.put('/orden-vista', (req, res) => {
+    try {
+      ok(res, { guardados: db.guardarOrdenVista(req.body.ambito, req.body.claves) });
+    } catch (e) {
+      fallo(res, 400, e.message);
     }
   });
 

@@ -453,6 +453,13 @@ Gaseosa 500ml;Coca Cola;Bebidas;unidad;1500;7790895000997"></textarea>
           </select>
         </div>
         <div class="campo">
+          <label for="prodAgrupar">En el POS</label>
+          <select id="prodAgrupar">
+            <option value="1">Dentro de su marca</option>
+            <option value="0">Suelto en el grupo</option>
+          </select>
+        </div>
+        <div class="campo">
           <label for="prodSabor">Sabor</label>
           <input id="prodSabor" list="listaSabores" maxlength="40" placeholder="Zero, Frutilla… (opcional)" autocomplete="off">
           <datalist id="listaSabores"></datalist>
@@ -497,6 +504,6 @@ Gaseosa 500ml;Coca Cola;Bebidas;unidad;1500;7790895000997"></textarea>
 
 <script src="/js/scanner.js?v=1"></script>
 <script src="/js/camara.js?v=8"></script>
-<script src="/js/admin.js?v=19"></script>
+<script src="/js/admin.js?v=20"></script>
 </body>
 </html>

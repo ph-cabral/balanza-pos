@@ -37,6 +37,8 @@
     marcaNombre: '',
     vista: 'grupos',
     ordenando: false,
+    // Orden manual de marcas/sueltos/productos: { ambito: { clave: posicion } }.
+    orden: {},
     config: { venta: { avisarSiNoTara: true, umbralTaraKg: 0.02, segundosCarrito: 3 } },
     // Para detectar que se peso sin tarar: marcamos si la balanza volvio a cero.
     pasoPorCero: true,
@@ -510,9 +512,7 @@
   function abrirGrupo(id) {
     estado.grupoId = id;
     estado.marcaSel = null;
-    var mg = marcasDelGrupo();
-    // Marcas: con 2 o mas, o con una y productos sueltos que mostrar al lado.
-    if (mg.marcas.length > 1 || (mg.marcas.length === 1 && mg.sueltos.length)) {
+    if (hayVistaMarcas(marcasDelGrupo())) {
       mostrarVista('marcas');
       pintarMarcas();
     } else {
@@ -530,6 +530,7 @@
 
   /** Atras desde los productos: a las marcas si se vino de ahi, si no a los grupos. */
   function volverDeProductos() {
+    modoOrdenar(false);
     if (!estado.filtro.trim() && estado.marcaSel !== null) {
       estado.marcaSel = null;
       mostrarVista('marcas');
@@ -541,17 +542,21 @@
 
   function claveMarca(p) { return (p.marca || '').trim().toLowerCase(); }
 
+  /** Un producto va suelto (sin pasar por una marca) si no tiene marca o se la sacaron. */
+  function vaSuelto(p) { return !claveMarca(p) || p.agrupar_marca === 0; }
+
   /**
-   * Marcas reales del grupo abierto (ordenadas, con su cuenta) y los productos
-   * sin marca, que se muestran sueltos junto a las marcas. Un solo recorrido.
+   * Marcas del grupo abierto (con su cuenta) y los productos sueltos, que se
+   * muestran al lado de las marcas. `items` los junta en el orden elegido a mano
+   * (lo no acomodado queda al final: marcas A-Z y despues los sueltos). Un solo recorrido.
    */
   function marcasDelGrupo() {
     var mapa = {}, marcas = [], sueltos = [];
     for (var i = 0; i < estado.productos.length; i++) {
       var p = estado.productos[i];
       if (p.categoria_id !== estado.grupoId) continue;
+      if (vaSuelto(p)) { sueltos.push(p); continue; }
       var k = claveMarca(p);
-      if (!k) { sueltos.push(p); continue; }
       var m = mapa[k];
       if (!m) {
         m = mapa[k] = { clave: k, nombre: p.marca.trim(), productos: 0 };
@@ -560,7 +565,75 @@
       m.productos++;
     }
     marcas.sort(function (a, b) { return a.nombre.localeCompare(b.nombre, 'es'); });
-    return { marcas: marcas, sueltos: sueltos };
+    var items = marcas.map(function (m) { return { clave: 'm:' + m.clave, marca: m }; })
+      .concat(sueltos.map(function (p) { return { clave: 'p:' + p.id, p: p }; }));
+    items = ordenarPor(items, ambitoGrupo(), function (it) { return it.clave; });
+    return { marcas: marcas, sueltos: sueltos, items: items };
+  }
+
+  /** Marcas: con 2 o mas, o con una y productos sueltos que mostrar al lado. */
+  function hayVistaMarcas(mg) {
+    return mg.marcas.length > 1 || (mg.marcas.length === 1 && mg.sueltos.length > 0);
+  }
+
+  /** Acomoda `lista` segun el orden guardado de `ambito`; lo no acomodado queda al final, como venia. */
+  function ordenarPor(lista, ambito, claveDe) {
+    var m = ambito && estado.orden[ambito];
+    if (!m) return lista;
+    return lista.map(function (x, i) { return { x: x, i: i, o: m[claveDe(x)] || 0 }; })
+      .sort(function (a, b) {
+        if (a.o && b.o) return a.o - b.o;
+        if (a.o) return -1;
+        if (b.o) return 1;
+        return a.i - b.i;
+      })
+      .map(function (r) { return r.x; });
+  }
+
+  function ambitoGrupo() { return estado.grupoId == null ? null : 'g:' + estado.grupoId; }
+
+  /** Donde se guarda el orden de la grilla de productos (null = buscador, no se acomoda). */
+  function ambitoProductos() {
+    if (estado.filtro.trim() || estado.grupoId == null) return null;
+    var marca = estado.marcaSel;
+    if (marca === null) {
+      // Grupo con una sola marca y nada suelto: la grilla ES esa marca.
+      var mg = marcasDelGrupo();
+      if (mg.marcas.length === 1 && !mg.sueltos.length) marca = mg.marcas[0].clave;
+    }
+    return marca !== null ? 'm:' + estado.grupoId + ':' + marca : 'g:' + estado.grupoId;
+  }
+
+  /** Saca el producto de su marca (queda suelto en el grupo) o lo vuelve a meter. */
+  function cambiarAgrupar(p) {
+    var antes = p.agrupar_marca === 0 ? 0 : 1;
+    p.agrupar_marca = antes ? 0 : 1;
+    reabrirGrupo();
+    fetch('/api/productos/' + p.id + '/agrupar', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agrupar: p.agrupar_marca === 1 }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (!d.ok) throw new Error(d.error); })
+      .catch(function (e) {
+        p.agrupar_marca = antes;
+        reabrirGrupo();
+        avisar('No se pudo guardar: ' + e.message, 'error');
+      });
+  }
+
+  /** Repinta la pantalla del grupo abierto despues de cambiar que va suelto (el modo ordenar sigue). */
+  function reabrirGrupo() {
+    if (estado.grupoId == null) return;
+    var mg = marcasDelGrupo();
+    if (estado.vista === 'productos' && estado.marcaSel !== null) {
+      var sigue = mg.marcas.some(function (m) { return m.clave === estado.marcaSel; });
+      if (sigue) { pintarGrilla(); return; }
+      estado.marcaSel = null;   // la marca se quedo sin productos
+    }
+    if (hayVistaMarcas(mg)) { mostrarVista('marcas'); pintarMarcas(); }
+    else { mostrarVista('productos'); pintarGrilla(); }
   }
 
   // ---------------------------------------------------------------- catalogo
@@ -572,6 +645,7 @@
         if (!d.ok) throw new Error(d.error);
         estado.productos = d.productos;
         estado.grupos = d.categorias || [];
+        estado.orden = d.orden || {};
         // Si el grupo que estaba abierto se dio de baja, volvemos a la base.
         if (estado.grupoId && !grupoPorId(estado.grupoId)) {
           estado.grupoId = null;
@@ -640,10 +714,14 @@
     el.marcas.innerHTML = '';
     var frag = document.createDocumentFragment();
     var mg = marcasDelGrupo();
-    mg.marcas.forEach(function (m) {
+    mg.items.forEach(function (it) {
+      // Productos sueltos (sin marca o sacados de ella): listos para tocar.
+      if (!it.marca) { frag.appendChild(tileProducto(it.p)); return; }
+      var m = it.marca;
       var b = document.createElement('button');
       b.className = 'marca-tile';
       b.dataset.marca = m.clave;
+      b.dataset.clave = it.clave;
 
       var nom = document.createElement('div');
       nom.className = 'marca-nombre';
@@ -655,11 +733,12 @@
 
       b.appendChild(nom);
       b.appendChild(n);
-      b.addEventListener('click', function () { abrirMarca(m); });
+      b.addEventListener('click', function () {
+        if (estado.ordenando) return;   // en modo ordenar, tocar no abre la marca
+        abrirMarca(m);
+      });
       frag.appendChild(b);
     });
-    // Productos sin marca: sueltos al final, listos para tocar.
-    mg.sueltos.forEach(function (p) { frag.appendChild(tileProducto(p)); });
     el.marcas.appendChild(frag);
   }
 
@@ -719,7 +798,7 @@
     return estado.productos.filter(function (p) {
       if (f) return (p.nombre + ' ' + p.marca + ' ' + (p.sabor || '') + ' ' + (p.contenido || '') + ' ' + p.categoria).toLowerCase().indexOf(f) !== -1;
       if (p.categoria_id !== estado.grupoId) return false;
-      return estado.marcaSel === null || claveMarca(p) === estado.marcaSel;
+      return estado.marcaSel === null || (claveMarca(p) === estado.marcaSel && p.agrupar_marca !== 0);
     });
   }
 
@@ -755,12 +834,27 @@
 
     b.appendChild(arriba);
     b.appendChild(pie);
-    b.addEventListener('click', function () { agregarProducto(p); });
+    b.dataset.clave = 'p:' + p.id;
+    // Solo se ve en modo ordenar: sacar el producto de su marca o volver a meterlo.
+    if (claveMarca(p)) {
+      var ag = document.createElement('span');
+      ag.className = 'prod-agrupar';
+      ag.setAttribute('role', 'button');
+      ag.textContent = p.agrupar_marca === 0 ? 'Meter en la marca' : 'Sacar de la marca';
+      ag.addEventListener('click', function (e) { e.stopPropagation(); cambiarAgrupar(p); });
+      b.appendChild(ag);
+    }
+    b.addEventListener('click', function () {
+      if (estado.ordenando) return;   // en modo ordenar, tocar no agrega
+      agregarProducto(p);
+    });
     return b;
   }
 
   function pintarGrilla() {
     var lista = productosVisibles();
+    var amb = ambitoProductos();
+    if (amb) lista = ordenarPor(lista, amb, function (p) { return 'p:' + p.id; });
     var grupo = grupoPorId(estado.grupoId);
 
     var conMarca = !estado.filtro.trim() && estado.marcaSel !== null;
@@ -800,6 +894,8 @@
   function modoOrdenar(activo) {
     estado.ordenando = !!activo;
     el.grupos.classList.toggle('ordenando', estado.ordenando);
+    el.marcas.classList.toggle('ordenando', estado.ordenando);
+    el.grilla.classList.toggle('ordenando', estado.ordenando);
     el.btnOrdenarTexto.textContent = estado.ordenando ? 'Finalizar' : 'Ordenar';
     el.btnOrdenar.classList.toggle('activo', estado.ordenando);
     el.ordenPanel.hidden = !estado.ordenando;
@@ -810,10 +906,15 @@
     el.ayudaOrden.textContent = estado.ordenando
       ? 'Arrastrá los grupos para acomodarlos'
       : (estado.camara ? 'Mantené apretada la pantalla para escanear' : '');
+    document.querySelectorAll('.ayuda-ordenar').forEach(function (n) {
+      n.textContent = 'Arrastrá para acomodar · el botón de cada artículo lo saca o lo mete en su marca';
+      n.hidden = !estado.ordenando;
+    });
   }
 
+  var SEL_TILE = '.grupo, .marca-tile, .prod';
+
   function habilitarArrastre() {
-    var cont = el.grupos;
     var arr = null;       // arrastre en curso
     var hueco = null;     // lugar que va a ocupar al soltar
 
@@ -822,12 +923,13 @@
         'translate(' + (x - arr.dx) + 'px,' + (y - arr.dy) + 'px) scale(1.04)';
     }
 
-    function iniciar(tile, e) {
+    function iniciar(cont, tile, e) {
       var r = tile.getBoundingClientRect();
-      arr = { tile: tile, dx: e.clientX - r.left, dy: e.clientY - r.top };
+      arr = { cont: cont, tile: tile, dx: e.clientX - r.left, dy: e.clientY - r.top };
 
       hueco = document.createElement('div');
-      hueco.className = 'grupo hueco';
+      hueco.className = (tile.classList.contains('grupo') ? 'grupo' :
+        tile.classList.contains('marca-tile') ? 'marca-tile' : 'prod') + ' hueco';
       hueco.style.minHeight = r.height + 'px';
       cont.insertBefore(hueco, tile);
 
@@ -847,12 +949,12 @@
       ubicar(e.clientX, e.clientY);
 
       var bajo = document.elementFromPoint(e.clientX, e.clientY);
-      var destino = bajo && bajo.closest ? bajo.closest('.grupo') : null;
-      if (!destino || destino === hueco || destino === arr.tile) return;
+      var destino = bajo && bajo.closest ? bajo.closest(SEL_TILE) : null;
+      if (!destino || destino === hueco || destino === arr.tile || destino.parentNode !== arr.cont) return;
 
       var r = destino.getBoundingClientRect();
       var antes = e.clientX < r.left + r.width / 2;
-      cont.insertBefore(hueco, antes ? destino : destino.nextSibling);
+      arr.cont.insertBefore(hueco, antes ? destino : destino.nextSibling);
     }
 
     function soltar() {
@@ -866,22 +968,28 @@
       guardarOrden();
     }
 
-    cont.addEventListener('pointerdown', function (e) {
-      if (!estado.ordenando) return;
-      var tile = e.target.closest ? e.target.closest('.grupo') : null;
-      if (!tile || tile.classList.contains('hueco')) return;
-      iniciar(tile, e);
-    });
+    // Los grupos, las marcas (con sus sueltos) y la grilla de productos se acomodan igual.
+    [el.grupos, el.marcas, el.grilla].forEach(function (cont) {
+      cont.addEventListener('pointerdown', function (e) {
+        if (!estado.ordenando || arr) return;
+        if (e.target.closest && e.target.closest('.prod-agrupar')) return;   // ese es un toque, no un arrastre
+        var tile = e.target.closest ? e.target.closest(SEL_TILE) : null;
+        if (!tile || tile.classList.contains('hueco') || tile.parentNode !== cont) return;
+        iniciar(cont, tile, e);
+      });
 
-    cont.addEventListener('pointermove', function (e) {
-      if (arr) mover(e);
-    });
+      cont.addEventListener('pointermove', function (e) {
+        if (arr && arr.cont === cont) mover(e);
+      });
 
-    cont.addEventListener('pointerup', soltar);
-    cont.addEventListener('pointercancel', soltar);
+      cont.addEventListener('pointerup', function () { if (arr && arr.cont === cont) soltar(); });
+      cont.addEventListener('pointercancel', function () { if (arr && arr.cont === cont) soltar(); });
+    });
   }
 
   function guardarOrden() {
+    if (estado.vista !== 'grupos') { guardarOrdenVista(); return; }
+
     var ids = [];
     el.grupos.querySelectorAll('.grupo').forEach(function (n) {
       if (n.dataset.id) ids.push(Number(n.dataset.id));
@@ -896,6 +1004,29 @@
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids: ids }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (!d.ok) throw new Error(d.error); })
+      .catch(function (e) { avisar('No se pudo guardar el orden: ' + e.message, 'error'); });
+  }
+
+  /** Orden de las marcas/sueltos de un grupo o de los productos de una marca (todo el ambito de una vez). */
+  function guardarOrdenVista() {
+    var cont = estado.vista === 'marcas' ? el.marcas : el.grilla;
+    var ambito = estado.vista === 'marcas' ? ambitoGrupo() : ambitoProductos();
+    if (!ambito) return;
+    var claves = [], mapa = {};
+    cont.querySelectorAll(SEL_TILE).forEach(function (n) {
+      if (n.dataset.clave && !n.classList.contains('hueco')) claves.push(n.dataset.clave);
+    });
+    if (!claves.length) return;
+    claves.forEach(function (c, i) { mapa[c] = i + 1; });
+    estado.orden[ambito] = mapa;
+
+    fetch('/api/orden-vista', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ambito: ambito, claves: claves }),
     })
       .then(function (r) { return r.json(); })
       .then(function (d) { if (!d.ok) throw new Error(d.error); })
@@ -2012,8 +2143,17 @@
   function estadoQr(texto, clase) {
     el.qrEstado.textContent = texto;
     el.qrEstado.className = 'qr-estado ' + (clase || '');
-    el.qrBoton.textContent = estado.qrApagado ? 'Generar QR' : 'Cancelar QR';
+    pintarQrBoton();
     el.qrBanda.hidden = false;
+  }
+
+  /** Boton QR junto a "Cerrar venta": rojo (activo) cancela el QR de esta venta, azul lo activa. */
+  function pintarQrBoton() {
+    var activo = !estado.qrApagado && !!estado.carrito.length;
+    el.qrBoton.hidden = !estado.qrDisponible;
+    el.qrBoton.disabled = !estado.carrito.length;
+    el.qrBoton.classList.toggle('activo', activo);
+    el.qrBoton.setAttribute('aria-label', estado.qrApagado ? 'Generar QR' : 'Cancelar QR');
   }
 
   /** QR cancelado a mano: no se genera ninguno hasta apretar "Generar QR" o empezar otra venta. */
@@ -2032,6 +2172,7 @@
     estado.qr = null;
     guardarCobroQr(null);
     el.qrBanda.hidden = true;
+    pintarQrBoton();
   }
 
   /** Identifica el contenido del carrito: si no cambia, la orden viva sigue valiendo. */
@@ -2054,6 +2195,7 @@
         if (!estado.qr) el.qrBanda.hidden = true;
       }
     }
+    pintarQrBoton();
     if (estado.qrApagado) {
       if (estado.qr) { if (estado.qrSync) clearTimeout(estado.qrSync); estado.qrSync = setTimeout(sincronizarQr, 0); }
       else pintarQrApagado();
@@ -2074,7 +2216,7 @@
     if (estado.qrApagado) { // cancelado a mano: se baja la orden viva y no se genera otra
       if (!q) { pintarQrApagado(); return; }
       bajarQr().then(function () {
-        if (estado.qr) { estado.qrApagado = false; el.qrBoton.textContent = 'Cancelar QR'; } // no se pudo bajar: sigue viva
+        if (estado.qr) { estado.qrApagado = false; pintarQrBoton(); } // no se pudo bajar: sigue viva
         else if (estado.qrApagado) pintarQrApagado();
       });
       return;
@@ -2227,7 +2369,7 @@
       .catch(function () {});
   }
 
-  /** Boton de la banda: "Cancelar QR" baja la orden de esta venta; "Generar QR" vuelve al modo automatico. */
+  /** Boton QR: rojo = "Cancelar QR" baja la orden de esta venta; "Generar QR" vuelve al modo automatico. */
   el.qrBoton.addEventListener('click', function () {
     if (!estado.qrDisponible) return;
     if (estado.qrApagado) {
@@ -2240,6 +2382,7 @@
       if (estado.qrSync) { clearTimeout(estado.qrSync); estado.qrSync = null; }
       sincronizarQr();
     }
+    pintarQrBoton();
   });
 
   function iniciarQr() {
@@ -2249,6 +2392,7 @@
         if (!d.ok || !d.habilitado) return;
         estado.qrDisponible = true;
         estado.qrConsultaMs = Math.max(2, Number(d.consulta_segundos) || 3) * 1000;
+        pintarQrBoton();
         retomarQr();
         programarQr(0);
       })
@@ -2316,8 +2460,11 @@
     el.btnSeguir.addEventListener('click', volverAGrupos);
     el.btnOrdenar.addEventListener('click', function () {
       if (estado.ordenando) { modoOrdenar(false); return; }
-      // Desde cualquier pantalla: primero a los grupos, despues el modo ordenar.
-      if (estado.vista !== 'grupos' || estado.filtro) volverAGrupos();
+      // Se acomoda la pantalla donde se esta: grupos, marcas del grupo o productos.
+      // Desde cualquier otra (confirmacion, buscador): primero a los grupos.
+      var enGrupo = estado.grupoId !== null && !estado.filtro.trim() &&
+        (estado.vista === 'marcas' || estado.vista === 'productos');
+      if (!enGrupo && (estado.vista !== 'grupos' || estado.filtro)) volverAGrupos();
       modoOrdenar(true);
     });
     if (el.columnas) {
