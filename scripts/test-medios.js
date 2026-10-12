@@ -40,6 +40,14 @@ chequear('redondea para arriba a $100', db.totalVenta([{ producto_id: q.id, cant
 const d = db.crearDescuento({ nombre: '10 %', tipo: 'porcentaje', valor: 10 });
 chequear('descuento + tarjeta', t('tarjeta', { descuento_id: d.id }).total_centavos === 3980000 && t('', { descuento_id: d.id }).total_centavos === 3600000, t('tarjeta', { descuento_id: d.id }).total_centavos);
 
+// Descuento: el neto se redondea para arriba a $100 (22.500 - 5 % = 21.375 -> 21.400).
+const p22 = db.crearProducto({ nombre: 'Cosa 22500', tipo: 'unidad', precio_centavos: 2250000 });
+const d5 = db.crearDescuento({ nombre: '5 %', tipo: 'porcentaje', valor: 5 });
+const r5 = db.totalVenta([{ producto_id: p22.id, cantidad: 1, tipo: 'unidad' }], { descuento_id: d5.id });
+chequear('5 % de 22.500 -> neto 21.400', r5.total_centavos === 2140000, r5.total_centavos);
+const dm = db.crearDescuento({ nombre: '$375', tipo: 'monto', valor: 37500 });
+chequear('monto $375 de 22.500 -> neto 22.200', db.totalVenta([{ producto_id: p22.id, cantidad: 1, tipo: 'unidad' }], { descuento_id: dm.id }).total_centavos === 2220000);
+
 let msg = '';
 try { t('cripto'); } catch (e) { msg = e.message; }
 chequear('medio inexistente se rechaza', /Medio de pago invalido/.test(msg), msg);

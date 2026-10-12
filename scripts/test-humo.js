@@ -152,7 +152,7 @@ async function esperarEstable(intentos = 25) {
       descuento_id: d10.descuento.id,
     });
     const bruto = 3 * gaseosa.precio_centavos;
-    const esperadoDesc = Math.min(bruto, Math.round((bruto * 10) / 10000) * 100);
+    const esperadoDesc = bruto - Math.ceil((bruto * 90) / 1000000) * 10000;
     chequear('aplica el descuento en el servidor',
       conDesc.ok && conDesc.venta.descuento_centavos === esperadoDesc && conDesc.venta.total_centavos === bruto - esperadoDesc,
       JSON.stringify(conDesc.venta || conDesc.error));

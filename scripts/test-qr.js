@@ -164,7 +164,7 @@ function crearMP() {
     const dto = await get('/api/descuentos');
     const did = (d10 && d10.id) || dto.descuentos[0].id;
     r = await post('/api/cobros-qr', { items: itemsD, estacion: 'e1', descuento_id: did });
-    const neto = 345050 - Math.round((345050 * 10) / 10000) * 100;
+    const neto = Math.ceil((345050 * 90) / 1000000) * 10000; // neto redondeado para arriba a $100
     chequear('el cobro lleva el total NETO (con descuento)', r.ok && r.cobro.total_centavos === neto, `${r.cobro && r.cobro.total_centavos} vs ${neto}`);
     const idD = r.cobro.id;
     ord(idD).status = 'processed';

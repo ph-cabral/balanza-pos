@@ -1135,11 +1135,13 @@
     return estado.carrito.reduce(function (a, i) { return a + subtotalDe(i); }, 0);
   }
 
-  // Igual que montoDescuento() en src/db.js: pesos enteros, tope el total.
+  // Igual que montoDescuento() en src/db.js: el neto se redondea para arriba a $100.
   function descuentoDe(d, bruto) {
     if (!d) return 0;
-    var m = d.tipo === 'porcentaje' ? Math.round((bruto * d.valor) / 10000) * 100 : d.valor;
-    return Math.min(bruto, Math.max(0, m));
+    var crudo = d.tipo === 'porcentaje'
+      ? Math.ceil((bruto * (100 - d.valor)) / (100 * REDONDEO_PESABLE)) * REDONDEO_PESABLE
+      : Math.ceil((bruto - d.valor) / REDONDEO_PESABLE) * REDONDEO_PESABLE;
+    return bruto - Math.min(bruto, Math.max(0, crudo));
   }
 
   function totalCarrito() {

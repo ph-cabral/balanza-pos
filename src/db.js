@@ -449,12 +449,16 @@ function subtotalPesable(gramos, precioKgCentavos) {
   return Math.ceil((gramos * precioKgCentavos) / (1000 * r)) * r;
 }
 
-// Descuento sobre el total bruto, en pesos enteros; nunca mayor que el total.
+// Descuento sobre el total bruto. El NETO (lo que se cobra) se redondea SIEMPRE
+// para arriba a multiplo de $100 (22500 - 5 % = 21375 -> 21400); el descuento es
+// bruto - neto. Nunca mayor que el bruto. Misma regla en public/js/pos.js.
 function montoDescuento(d, brutoCentavos) {
-  const m = d.tipo === 'porcentaje'
-    ? Math.round((brutoCentavos * d.valor) / 10000) * 100
-    : d.valor;
-  return Math.min(brutoCentavos, Math.max(0, m));
+  const r = REDONDEO_PESABLE_CENTAVOS;
+  const crudo = d.tipo === 'porcentaje'
+    ? Math.ceil((brutoCentavos * (100 - d.valor)) / (100 * r)) * r // enteros: sin flotantes
+    : Math.ceil((brutoCentavos - d.valor) / r) * r;
+  const neto = Math.min(brutoCentavos, Math.max(0, crudo));
+  return brutoCentavos - neto;
 }
 
 // --- Sentencias preparadas --------------------------------------------------
