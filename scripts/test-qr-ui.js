@@ -106,7 +106,7 @@ function crearMP() {
     const abiertas = () => [...mp.ordenes.values()].filter((o) => o.status === 'created');
     const esperarBanda = (monto) => pagina.waitForFunction((m) => {
       const b = document.querySelector('#qrBanda');
-      return !b.hidden && document.querySelector('#qrMonto').textContent.includes(m);
+      return b.hidden && document.querySelector('#qrMonto').textContent.includes(m); // la banda no se muestra: ocupa lugar
     }, monto, { timeout: 10000 });
 
     console.log('\n1. Sin boton');

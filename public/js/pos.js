@@ -2144,7 +2144,7 @@
     el.qrEstado.textContent = texto;
     el.qrEstado.className = 'qr-estado ' + (clase || '');
     pintarQrBoton();
-    el.qrBanda.hidden = false;
+    el.qrBanda.hidden = clase !== 'fallo'; // la banda ocupa lugar: solo aparece si hay un error
   }
 
   /** Boton QR junto a "Cerrar venta": rojo (activo) cancela el QR de esta venta, azul lo activa. */
