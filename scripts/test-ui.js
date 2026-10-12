@@ -145,7 +145,7 @@ function chequear(desc, cond, detalle) {
     await pagina.locator('#btnOrdenar').click();
     await esperar(200);
     // Un toque corto en Ordenar entra al grupo (no arrastra); mantener apretado es lo que mueve.
-    await pagina.locator('.grupo').nth(0).click();
+    await pagina.locator('.grupo').nth(0).click({ force: true });
     await esperar(300);
     chequear('en Ordenar, tocar un grupo lo abre', !(await pagina.locator('#vistaGrupos').isVisible()));
     await pagina.locator('#btnVolver:visible, #btnVolverMarcas:visible').first().click();
