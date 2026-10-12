@@ -266,9 +266,7 @@ function chequear(desc, cond, detalle) {
 
     console.log('\n7b. Medios de pago (precios de efectivo; QR y tarjeta suman un %)');
     const efectivoCent = Number((await pagina.locator('#total').textContent()).replace(/[^\d,]/g, '').replace(',', ''));
-    const filasMedios = await pagina.locator('#mediosResumen .medios-fila').allTextContents();
-    chequear('muestra efectivo, QR y tarjeta', filasMedios.some((t) => /Efectivo/.test(t)) && filasMedios.some((t) => /QR Mercado Pago/.test(t)) && filasMedios.some((t) => /Tarjeta/.test(t)), filasMedios.join(' | '));
-    chequear('muestra el precio de lista y el descuento de efectivo', filasMedios.some((t) => /Precio de lista/.test(t)) && /−\d/.test(filasMedios.find((t) => /Efectivo/.test(t)) || ''), filasMedios.join(' | '));
+    chequear('ya no hay resumen de medios de pago', (await pagina.locator('#mediosResumen').count()) === 0);
     const tarjetaEsperada = Math.floor((efectivoCent * 11050 + 99999999) / 100000000) * 10000;
     chequear('el botón Tarjeta muestra el total con el recargo',
       (await pagina.locator('#btnTarjetaTexto').textContent()).replace(/\D/g, '') === String(tarjetaEsperada),
@@ -297,6 +295,10 @@ function chequear(desc, cond, detalle) {
     await esperar(700);
     const efTarj = Number((await pagina.locator('#total').textContent()).replace(/[^\d,]/g, '').replace(',', ''));
     await pagina.locator('#btnTarjeta').click();
+    await esperar(300);
+    const totTarjEsp = Math.floor((efTarj * 11050 + 99999999) / 100000000) * 10000;
+    chequear('al tocar Tarjeta se ve el monto grande', await pagina.locator('#modalTarjeta').isVisible() && (await pagina.locator('#tarjetaMonto').textContent()).replace(/\D/g, '') === String(totTarjEsp), await pagina.locator('#tarjetaMonto').textContent());
+    await pagina.locator('#tarjetaCobrado').click();
     await esperar(1200);
     chequear('la venta con tarjeta se guarda', (await pagina.locator('.aviso').first().textContent()).indexOf('Tarjeta') !== -1, await pagina.locator('.aviso').first().textContent());
     const ultima = await pagina.evaluate(async () => (await (await fetch('/api/ventas?limite=1')).json()));

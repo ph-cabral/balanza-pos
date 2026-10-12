@@ -138,7 +138,10 @@
     selectorLista: $('selectorLista'),
     selectorCerrar: $('selectorCerrar'),
 
-    mediosResumen: $('mediosResumen'),
+    modalTarjeta: $('modalTarjeta'),
+    tarjetaMonto: $('tarjetaMonto'),
+    tarjetaVolver: $('tarjetaVolver'),
+    tarjetaCobrado: $('tarjetaCobrado'),
     btnTarjeta: $('btnTarjeta'),
     btnTarjetaTexto: $('btnTarjetaTexto'),
     btnDescuento: $('btnDescuento'),
@@ -937,41 +940,22 @@
   function pintarMedios() {
     var neto = totalCarrito();
     var hay = estado.medios.length > 0 && neto > 0;
-    el.mediosResumen.hidden = !hay;
     el.btnTarjeta.hidden = !estado.medios.some(function (m) { return m.clave === 'tarjeta'; });
     el.btnTarjeta.disabled = !hay || estado.cerrando;
-    if (!hay) { el.mediosResumen.innerHTML = ''; return; }
-
-    var filas = estado.medios.map(function (m) { return { m: m, total: totalConMedio(neto, m.bp) }; });
-    var lista = filas.reduce(function (a, f) { return Math.max(a, f.total); }, 0);
-    var frag = document.createDocumentFragment();
-    function fila(clase, izq, desc, der) {
-      var d = document.createElement('div');
-      d.className = 'medios-fila ' + clase;
-      var a = document.createElement('span');
-      a.textContent = izq;
-      if (desc) {
-        var x = document.createElement('span');
-        x.className = 'medios-desc';
-        x.textContent = ' ' + desc;
-        a.appendChild(x);
-      }
-      var b = document.createElement('span');
-      b.className = 'num';
-      b.textContent = der;
-      d.appendChild(a); d.appendChild(b);
-      frag.appendChild(d);
-    }
-    if (filas.some(function (f) { return f.total < lista; })) fila('lista', 'Precio de lista', '', plata(lista));
-    filas.forEach(function (f) {
-      var pct = lista > 0 ? (1 - f.total / lista) * 100 : 0;
-      var desc = pct > 0.05 ? '−' + pct.toFixed(1).replace('.', ',') + ' %' : '';
-      fila('', f.m.nombre, desc, plata(f.total));
-    });
-    el.mediosResumen.innerHTML = '';
-    el.mediosResumen.appendChild(frag);
-    if (!estado.cerrando) el.btnTarjetaTexto.textContent = 'Tarjeta · ' + plata(totalConMedio(neto, medioBp('tarjeta')));
+    if (!hay) { cerrarTarjeta(); return; }
+    var tarjeta = plata(totalConMedio(neto, medioBp('tarjeta')));
+    el.tarjetaMonto.textContent = tarjeta;
+    if (!estado.cerrando) el.btnTarjetaTexto.textContent = 'Tarjeta · ' + tarjeta;
   }
+
+  /** Cobro con tarjeta: pantalla con el monto grande para el cliente; "Cobrado" guarda la venta. */
+  function abrirTarjeta() {
+    if (!estado.carrito.length || estado.cerrando) return;
+    pintarMedios();
+    el.modalTarjeta.hidden = false;
+  }
+
+  function cerrarTarjeta() { el.modalTarjeta.hidden = true; }
 
   function medioBp(clave) {
     var m = estado.medios.filter(function (x) { return x.clave === clave; })[0];
@@ -2355,7 +2339,9 @@
     if (panelCarrito) panelCarrito.addEventListener('pointerdown', frenarVuelta);
 
     el.btnCobrar.addEventListener('click', function () { cerrarVenta(''); });
-    el.btnTarjeta.addEventListener('click', function () { cerrarVenta('tarjeta'); });
+    el.btnTarjeta.addEventListener('click', abrirTarjeta);
+    el.tarjetaVolver.addEventListener('click', cerrarTarjeta);
+    el.tarjetaCobrado.addEventListener('click', function () { cerrarTarjeta(); cerrarVenta('tarjeta'); });
 
     el.btnDescuento.addEventListener('click', abrirDescuentos);
     el.descuentosCerrar.addEventListener('click', cerrarDescuentos);

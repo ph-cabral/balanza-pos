@@ -632,11 +632,9 @@ input  { font-family: inherit; font-size: inherit; }
 
 /* ---------- Medios de pago (lista / efectivo / QR / tarjeta) ---------- */
 
-.medios-resumen { margin: -4px 0 12px; font-size: 14px; color: var(--texto-medio); }
-.medios-resumen[hidden] { display: none; }
-.medios-fila { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
-.medios-fila .medios-desc { color: var(--acento-fuerte); font-weight: 600; }
-.medios-fila.lista { color: var(--texto); font-weight: 600; }
+.pago-caja { text-align: center; }
+.pago-rotulo { font-size: 22px; font-weight: 700; color: var(--texto-medio); }
+.pago-monto { font-size: 64px; font-weight: 800; letter-spacing: -2px; margin: 6px 0 18px; }
 
 .btn-tarjeta {
   width: 100%;
@@ -688,7 +686,7 @@ input  { font-family: inherit; font-size: inherit; }
   cursor: pointer;
 }
 .qr-boton:active { filter: brightness(1.2); }
-.qr-monto { font-size: 22px; font-weight: 700; letter-spacing: -.5px; }
+.qr-monto { font-size: 30px; font-weight: 700; letter-spacing: -.5px; }
 .qr-estado { font-size: 15px; font-weight: 600; color: var(--info); }
 .qr-estado.pagado { color: var(--acento-fuerte); }
 .qr-estado.fallo { color: var(--error); }
