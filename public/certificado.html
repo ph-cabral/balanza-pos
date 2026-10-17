@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Instalar certificado del POS</title>
+<style>
+  body { font: 16px/1.45 system-ui, sans-serif; margin: 0; padding: 16px; max-width: 560px; margin-inline: auto; color: #1d1d1f; background: #fafafa; }
+  h1 { font-size: 1.3rem; margin: 0 0 4px; }
+  h2 { font-size: 1.05rem; margin: 22px 0 6px; }
+  p, li { margin: 4px 0; }
+  ol { padding-left: 22px; }
+  .btn { display: block; text-align: center; padding: 14px; margin: 14px 0; border-radius: 10px; font-weight: 600; text-decoration: none; background: #0a6cff; color: #fff; }
+  .btn.sec { background: #fff; color: #0a6cff; border: 2px solid #0a6cff; }
+  .ok { padding: 12px; border-radius: 10px; background: #e6f6ea; color: #14602b; font-weight: 600; }
+  .nota { font-size: .9rem; color: #555; }
+</style>
+</head>
+<body>
+<h1>Certificado del POS</h1>
+<p class="nota">Se instala una sola vez en cada celular o tablet. Después el navegador deja de avisar "La conexión no es privada" y la cámara funciona.</p>
+
+<div id="ok" class="ok" hidden>✓ Este equipo ya confía en el POS. No hace falta instalar nada.</div>
+
+<a class="btn" href="/ca.crt" id="descargar">1. Descargar certificado</a>
+
+<h2>Android</h2>
+<ol>
+  <li>Descargá el certificado (botón de arriba).</li>
+  <li>Ajustes → Seguridad (y privacidad) → Más seguridad → Cifrado y credenciales → <b>Instalar un certificado</b> → <b>Certificado de CA</b>.</li>
+  <li>Elegí "Instalar de todos modos" y seleccioná <b>balanza-pos-ca.crt</b> (carpeta Descargas).</li>
+</ol>
+
+<h2>iPhone / iPad</h2>
+<ol>
+  <li>Abrí esta página en <b>Safari</b> y descargá el certificado → "Permitir".</li>
+  <li>Ajustes → arriba aparece "Perfil descargado" → <b>Instalar</b>.</li>
+  <li>Ajustes → General → Información → Ajustes de confianza de certificados → activá <b>Balanza POS CA</b>.</li>
+</ol>
+
+<a class="btn sec" id="seguro" href="#">2. Ya lo instalé → ir a la versión segura</a>
+<p class="nota">Si al entrar sigue avisando, el certificado no quedó instalado: repetí los pasos. Chrome, Brave y Safari lo usan; Firefox en Android requiere activar "Usar certificados de CA de terceros" en sus ajustes.</p>
+
+<script>
+(function () {
+  var seguro = location.protocol === 'https:';
+  if (seguro) document.getElementById('ok').hidden = false;
+  var q = new URLSearchParams(location.search).get('volver');
+  var destino = 'https://' + location.host + '/';
+  if (q && /^https:\/\//.test(q) && new URL(q).host === location.host) destino = q;
+  var a = document.getElementById('seguro');
+  a.href = destino;
+  if (seguro) a.textContent = 'Volver al POS';
+})();
+</script>
+</body>
+</html>

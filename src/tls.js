@@ -1,17 +1,17 @@
 'use strict';
 
 /**
- * Certificado propio para servir el POS tambien por HTTPS.
+ * Certificados para servir el POS tambien por HTTPS.
  *
  * Para que el celular pueda usar la camara (lector de codigos) el navegador
  * exige una pagina segura: HTTPS o localhost. En la red del local no hay dominio
- * ni certificado "de verdad", asi que el POS se genera uno autofirmado la
- * primera vez que arranca y lo guarda en data/tls/ (propio de cada PC, fuera de
- * git). El navegador avisa una vez "La conexion no es privada"; se acepta y
- * queda.
+ * ni certificado "de verdad", asi que cada PC se genera una CA propia (limitada a
+ * redes privadas) y con ella firma el certificado del servidor. La CA se instala
+ * una sola vez en cada celular/tablet (public/certificado.html, GET /ca.crt) y
+ * desde ahi el navegador no avisa nada. Todo vive en data/tls/ (fuera de git).
  *
  * Sin dependencias: Node trae las claves (crypto) pero no arma certificados,
- * asi que el X.509 se codifica aca a mano (DER), con clave EC P-256.
+ * asi que el X.509 se codifica aca a mano (DER), con claves EC P-256.
  */
 
 const fs = require('fs');
@@ -79,66 +79,116 @@ function ipABytes(ip) {
   return Buffer.from(ip.split('.').map(Number));
 }
 
-// ---------------------------------------------------------------- certificado
+// ---------------------------------------------------------------- certificados
 
-// Safari (iPad/iPhone) rechaza certificados de mas de 825 dias aunque se
-// acepte el aviso; 800 dias y se renueva solo cuando falta un mes.
-const DIAS_VALIDEZ = 800;
+// Safari (iPad/iPhone) rechaza certificados de servidor de mas de 825 dias; 800
+// dias y se renueva solo cuando falta un mes. La CA dura 10 años: se instala una
+// sola vez en cada celular/tablet.
+const DIAS_HOJA = 800;
+const DIAS_CA = 3650;
 const DIAS_RENOVAR = 30;
+const DIAS_RENOVAR_CA = 60;
 
-/**
- * Arma un certificado autofirmado para las IP y nombres dados.
- * Devuelve { key, cert } en PEM.
- */
-function generar({ ips = [], nombres = [], dias = DIAS_VALIDEZ } = {}) {
-  const { privateKey, publicKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+// La CA solo puede firmar certificados para estas redes privadas y estos nombres
+// (nameConstraints): si alguien se llevara data/tls/ca.key no podria hacerse
+// pasar por ningun sitio de internet en los equipos que confian en la CA.
+const REDES_PRIVADAS = [
+  [[10, 0, 0, 0], [255, 0, 0, 0]],
+  [[127, 0, 0, 0], [255, 0, 0, 0]],
+  [[172, 16, 0, 0], [255, 240, 0, 0]],
+  [[192, 168, 0, 0], [255, 255, 0, 0]],
+];
+
+function ipPrivada(ip) {
+  const [a, b] = ip.split('.').map(Number);
+  return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+}
+
+const pem = (tipo, b) =>
+  `-----BEGIN ${tipo}-----\n${b.toString('base64').match(/.{1,64}/g).join('\n')}\n-----END ${tipo}-----\n`;
+
+function extension(id, critica, valor) {
+  return seq(oid(id), ...(critica ? [booleano(true)] : []), octetos(valor));
+}
+
+/** Identificador de clave (SHA-1 del punto publico EC, 65 bytes al final del SPKI). */
+function idClave(publicKey) {
+  const spki = publicKey.export({ type: 'spki', format: 'der' });
+  return crypto.createHash('sha1').update(spki.subarray(spki.length - 65)).digest();
+}
+
+/** Arma y firma un certificado X.509 v3. */
+function construir({ cnSujeto, cnEmisor, publicKey, claveFirma, extensiones, dias }) {
   const spki = publicKey.export({ type: 'spki', format: 'der' });
   const ecdsaSha256 = seq(oid('1.2.840.10045.4.3.2'));
-
   const desde = new Date(Date.now() - 24 * 3600 * 1000); // un dia atras: relojes desfasados
   const hasta = new Date(desde.getTime() + dias * 24 * 3600 * 1000);
-
   const serie = crypto.randomBytes(16);
   serie[0] &= 0x7f;
-
-  // subjectAltName: dNSName [2], iPAddress [7] (IMPLICIT, primitivos)
-  const alt = [];
-  for (const n of nombres) alt.push(tlv(0x82, Buffer.from(n, 'ascii')));
-  for (const ip of ips) alt.push(tlv(0x87, ipABytes(ip)));
-
-  const extensiones = ctx(3, seq(
-    // basicConstraints: no es una CA
-    seq(oid('2.5.29.19'), booleano(true), octetos(seq())),
-    // keyUsage: digitalSignature (critica)
-    seq(oid('2.5.29.15'), booleano(true), octetos(tlv(0x03, Buffer.from([0x07, 0x80])))),
-    // extKeyUsage: serverAuth
-    seq(oid('2.5.29.37'), octetos(seq(oid('1.3.6.1.5.5.7.3.1')))),
-    // subjectAltName
-    seq(oid('2.5.29.17'), octetos(seq(...alt))),
-  ));
-
-  const cn = nombres[0] || ips[0] || 'balanza-pos';
   const tbs = seq(
     ctx(0, entero(Buffer.from([2]))),     // version v3
     entero(serie),
     ecdsaSha256,
-    nombre(cn),                           // emisor = sujeto (autofirmado)
+    nombre(cnEmisor),
     seq(fecha(desde), fecha(hasta)),
-    nombre(cn),
+    nombre(cnSujeto),
     spki,
-    extensiones,
+    ctx(3, seq(...extensiones)),
   );
+  const firma = crypto.sign('sha256', tbs, claveFirma); // ECDSA en DER
+  return pem('CERTIFICATE', seq(tbs, ecdsaSha256, bits(firma)));
+}
 
-  const firma = crypto.sign('sha256', tbs, privateKey); // ECDSA en DER
-  const der = seq(tbs, ecdsaSha256, bits(firma));
+function claves() {
+  const { privateKey, publicKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  return { privateKey, publicKey, pem: privateKey.export({ type: 'pkcs8', format: 'pem' }) };
+}
 
-  const pem = (tipo, b) =>
-    `-----BEGIN ${tipo}-----\n${b.toString('base64').match(/.{1,64}/g).join('\n')}\n-----END ${tipo}-----\n`;
+const cnCA = (host) => `Balanza POS CA (${host})`;
 
-  return {
-    key: privateKey.export({ type: 'pkcs8', format: 'pem' }),
-    cert: pem('CERTIFICATE', der),
-  };
+/**
+ * Crea la CA propia de esta PC. `nombres`: nombres DNS que podra firmar (ademas
+ * de las redes privadas). Devuelve { key, cert } en PEM.
+ */
+function generarCA({ nombres = ['localhost'], host = os.hostname().toLowerCase(), dias = DIAS_CA } = {}) {
+  const k = claves();
+  const permitidos = Buffer.concat([
+    ...nombres.map((n) => seq(tlv(0x82, Buffer.from(n, 'ascii')))),
+    ...REDES_PRIVADAS.map(([ip, mascara]) => seq(tlv(0x87, Buffer.from([...ip, ...mascara])))),
+  ]);
+  const cert = construir({
+    cnSujeto: cnCA(host), cnEmisor: cnCA(host), publicKey: k.publicKey, claveFirma: k.privateKey, dias,
+    extensiones: [
+      extension('2.5.29.19', true, seq(booleano(true), entero(Buffer.from([0])))),   // CA, sin subordinadas
+      extension('2.5.29.15', true, tlv(0x03, Buffer.from([0x01, 0x06]))),             // keyCertSign, cRLSign
+      extension('2.5.29.14', false, octetos(idClave(k.publicKey))),
+      extension('2.5.29.30', true, seq(tlv(0xa0, permitidos))),                       // nameConstraints
+    ],
+  });
+  return { key: k.pem, cert };
+}
+
+/** Certificado de servidor para las IP y nombres dados, firmado por la CA { key, cert }. */
+function emitir({ ca, ips = [], nombres = [], dias = DIAS_HOJA } = {}) {
+  const k = claves();
+  const caKey = crypto.createPrivateKey(ca.key);
+  const caX = new crypto.X509Certificate(ca.cert);
+  const cnEmisor = caX.subject.split('\n').find((l) => l.startsWith('CN=')).slice(3);
+  const alt = [];
+  for (const n of nombres) alt.push(tlv(0x82, Buffer.from(n, 'ascii')));   // dNSName
+  for (const ip of ips) alt.push(tlv(0x87, ipABytes(ip)));                   // iPAddress
+  const cert = construir({
+    cnSujeto: nombres[0] || ips[0] || 'balanza-pos', cnEmisor, publicKey: k.publicKey, claveFirma: caKey, dias,
+    extensiones: [
+      extension('2.5.29.19', true, seq()),                                                  // no es CA
+      extension('2.5.29.15', true, tlv(0x03, Buffer.from([0x07, 0x80]))),                   // digitalSignature
+      extension('2.5.29.37', false, seq(oid('1.3.6.1.5.5.7.3.1'))),                         // serverAuth
+      extension('2.5.29.17', false, seq(...alt)),                                           // subjectAltName
+      extension('2.5.29.14', false, octetos(idClave(k.publicKey))),
+      extension('2.5.29.35', false, seq(tlv(0x80, idClave(caX.publicKey)))),               // authorityKeyIdentifier
+    ],
+  });
+  return { key: k.pem, cert };
 }
 
 // ---------------------------------------------------------------- en disco
@@ -154,31 +204,66 @@ function ipsDeEstaPC() {
   return out;
 }
 
-/**
- * Lee el certificado de `carpeta` o lo genera si no existe. Una vez creado no
- * se regenera aunque cambie la IP de la PC: cada equipo acepto ESE certificado
- * y uno nuevo lo haria preguntar de nuevo; con un certificado autofirmado que
- * la IP no coincida da igual (el aviso se acepta de la misma forma).
- * Se renueva solo cuando esta por vencer. Para forzar uno nuevo: borrar
- * data/tls/. Devuelve { key, cert, nuevo }.
- */
-function cargarOCrear(carpeta) {
-  const rutaKey = path.join(carpeta, 'pos.key');
-  const rutaCert = path.join(carpeta, 'pos.crt');
-  try {
-    const key = fs.readFileSync(rutaKey);
-    const cert = fs.readFileSync(rutaCert);
-    const vence = new Date(new crypto.X509Certificate(cert).validTo).getTime();
-    if (vence - Date.now() > DIAS_RENOVAR * 24 * 3600 * 1000) return { key, cert, nuevo: false };
-  } catch (_) { /* no hay certificado todavia (o esta roto) */ }
+const leer = (ruta) => fs.readFileSync(ruta);
+const dias = (x) => (new Date(x.validTo).getTime() - Date.now()) / 86400000;
 
-  const ips = ipsDeEstaPC();
-  const host = os.hostname().toLowerCase();
-  const { key, cert } = generar({ ips, nombres: ['localhost', host] });
-  fs.mkdirSync(carpeta, { recursive: true });
-  fs.writeFileSync(rutaKey, key, { mode: 0o600 });
-  fs.writeFileSync(rutaCert, cert);
-  return { key, cert, nuevo: true };
+function leerCA(carpeta) {
+  try {
+    const key = leer(path.join(carpeta, 'ca.key'));
+    const cert = leer(path.join(carpeta, 'ca.crt'));
+    const meta = JSON.parse(leer(path.join(carpeta, 'ca.json')));
+    if (dias(new crypto.X509Certificate(cert)) <= DIAS_RENOVAR_CA) return null;
+    return { key, cert, nombres: meta.nombres || ['localhost'] };
+  } catch (_) { return null; }
 }
 
-module.exports = { generar, cargarOCrear };
+/**
+ * Carga (o crea) los certificados de `carpeta` (data/tls/):
+ *   ca.key / ca.crt / ca.json  CA propia de esta PC. ca.crt es lo que se instala en
+ *                              celulares y tablets (una vez); ca.key no sale de la PC.
+ *   pos.key / pos.crt          certificado del servidor, firmado por la CA.
+ * El certificado del servidor se reemite solo cuando cambia la IP de la PC o falta
+ * menos de un mes para que venza; la CA no cambia, asi que los equipos no tienen
+ * que instalar nada de nuevo. Un certificado autofirmado de una version anterior
+ * se reemplaza (los equipos tienen que instalar la CA).
+ * Para empezar de cero: borrar data/tls/.
+ * Devuelve { key, cert, ca, nuevo, nuevaCA }. `opc.ips` / `opc.host`: para pruebas.
+ */
+function cargarOCrear(carpeta, opc = {}) {
+  const ips = (opc.ips || ipsDeEstaPC()).filter(ipPrivada);
+  const host = (opc.host || os.hostname()).toLowerCase();
+  fs.mkdirSync(carpeta, { recursive: true });
+
+  let ca = leerCA(carpeta);
+  const nuevaCA = !ca;
+  if (nuevaCA) {
+    const nombres = ['localhost'];
+    if (/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(host) && host !== 'localhost') nombres.push(host);
+    const g = generarCA({ nombres, host });
+    fs.writeFileSync(path.join(carpeta, 'ca.key'), g.key, { mode: 0o600 });
+    fs.writeFileSync(path.join(carpeta, 'ca.crt'), g.cert);
+    fs.writeFileSync(path.join(carpeta, 'ca.json'), JSON.stringify({ nombres }));
+    ca = { key: g.key, cert: g.cert, nombres };
+  }
+  const nombresHoja = ['localhost', host].filter((n, i, a) => ca.nombres.includes(n) && a.indexOf(n) === i);
+
+  if (!nuevaCA) {
+    try {
+      const key = leer(path.join(carpeta, 'pos.key'));
+      const cert = leer(path.join(carpeta, 'pos.crt'));
+      const x = new crypto.X509Certificate(cert);
+      const firmada = x.verify(new crypto.X509Certificate(ca.cert).publicKey);
+      if (firmada && dias(x) > DIAS_RENOVAR &&
+          ips.every((ip) => x.checkIP(ip)) && nombresHoja.every((n) => x.checkHost(n))) {
+        return { key, cert, ca: ca.cert, nuevo: false, nuevaCA: false };
+      }
+    } catch (_) { /* no hay certificado todavia (o es de una version anterior) */ }
+  }
+
+  const h = emitir({ ca, ips, nombres: nombresHoja });
+  fs.writeFileSync(path.join(carpeta, 'pos.key'), h.key, { mode: 0o600 });
+  fs.writeFileSync(path.join(carpeta, 'pos.crt'), h.cert);
+  return { key: h.key, cert: h.cert, ca: ca.cert, nuevo: true, nuevaCA };
+}
+
+module.exports = { generarCA, emitir, cargarOCrear, ipPrivada };

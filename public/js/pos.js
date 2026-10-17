@@ -238,14 +238,25 @@
     el.pesoNumero.className = clase;
 
     var chipClase, texto;
-    if (b.sinBalanza) { chipClase = 'chip'; texto = 'Sin balanza'; }
+    if (!estado.wsAbierto) {
+      chipClase = 'chip espera';
+      texto = estado.wsIntentos > 1 ? 'Reconectando…' : 'Conectando…';
+    }
+    else if (b.sinBalanza) { chipClase = 'chip'; texto = 'Sin balanza'; }
     else if (!b.conectado) { chipClase = 'chip mal'; texto = b.error ? 'Balanza desconectada' : 'Sin balanza'; }
     else if (b.estable) { chipClase = 'chip ok'; texto = 'Peso estable'; }
     else { chipClase = 'chip espera'; texto = 'Estabilizando…'; }
     el.chipEstado.className = chipClase;
     el.chipTexto.textContent = texto;
 
-    if (b.conectado) {
+    if (!estado.wsAbierto) {
+      // Sin canal en vivo con el POS: no es la balanza, es este equipo. Con https y
+      // sin la CA instalada el WebSocket puede quedar colgado sin avisar.
+      el.chipPuerto.hidden = estado.wsIntentos < 2;
+      el.chipPuerto.textContent = location.protocol === 'https:'
+        ? 'Sin conexión con el POS. Si persiste, instalá el certificado (/certificado.html) o entrá por http://' + location.host
+        : 'Sin conexión con el POS. Revisá el WiFi de este equipo.';
+    } else if (b.conectado) {
       el.chipPuerto.hidden = false;
       var quien = varias() && b.nombre ? b.nombre + ' · ' : '';
       el.chipPuerto.textContent = quien + (b.simulador
@@ -262,15 +273,37 @@
     if (b.gramos <= umbral) estado.pasoPorCero = true;
   }
 
+  var MS_CONECTAR_WS = 6000;
+
   function conectarWS() {
     var proto = location.protocol === 'https:' ? 'wss' : 'ws';
     var q = estado.estacion ? '?estacion=' + encodeURIComponent(estado.estacion) : '';
     var ws = new WebSocket(proto + '://' + location.host + '/ws' + q);
     estado.ws = ws;
+    estado.wsAbierto = false;
+    estado.wsIntentos = (estado.wsIntentos || 0) + 1;
+    pintarBalanza();
+
+    // Un handshake que nunca termina (red que se cayo a mitad, certificado que el
+    // celular no acepta) no dispara onclose: sin esto queda en "Conectando…" para siempre.
+    var tConectar = setTimeout(function () {
+      if (estado.ws === ws && ws.readyState !== 1) cerrar();
+    }, MS_CONECTAR_WS);
+
+    function cerrar() {
+      clearTimeout(tConectar);
+      if (estado.ws !== ws) return;
+      estado.wsAbierto = false;
+      estado.balanza.conectado = false;
+      pintarBalanza();
+      try { ws.onclose = null; ws.close(); } catch (e) {}
+      setTimeout(function () { if (estado.ws === ws) conectarWS(); }, 2000);
+    }
 
     ws.onmessage = function (ev) {
       if (estado.ws !== ws) return;
-      var msg = JSON.parse(ev.data);
+      var msg;
+      try { msg = JSON.parse(ev.data); } catch (e) { return; }
       if (msg.tipo === 'balanza') {
         estado.balanza = msg.estado;
         pintarBalanza();
@@ -287,17 +320,26 @@
     };
 
     // Al (re)conectar el servidor no sabe cuantos articulos hay en este carrito.
-    ws.onopen = function () { informarCarrito(true); };
-
-    ws.onclose = function () {
-      // Un socket reemplazado a proposito (cambio de estacion) no reconecta.
+    ws.onopen = function () {
+      clearTimeout(tConectar);
       if (estado.ws !== ws) return;
-      estado.balanza.conectado = false;
+      estado.wsAbierto = true;
+      estado.wsIntentos = 0;
       pintarBalanza();
-      setTimeout(function () { if (estado.ws === ws) conectarWS(); }, 2000);
+      informarCarrito(true);
     };
 
+    // Un socket reemplazado a proposito (cambio de estacion) no reconecta.
+    ws.onclose = cerrar;
     ws.onerror = function () { try { ws.close(); } catch (e) {} };
+  }
+
+  // Al volver a la pantalla o a la red, un socket muerto se reemplaza ya, sin esperar
+  // el timeout de TCP del celular.
+  function revivirWS() {
+    var ws = estado.ws;
+    if (!ws || ws.readyState === 1 || ws.readyState === 0) return;
+    reconectarWS();
   }
 
   function reconectarWS() {
@@ -2655,8 +2697,11 @@
     mostrarVista('grupos');
 
     // Si vuelven de la pantalla de administracion, refrescamos el catalogo.
+    window.addEventListener('online', revivirWS);
+    window.addEventListener('pageshow', revivirWS);
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden) {
+        revivirWS();
         cargarCatalogo();
         cargarEstaciones().then(pintarEstacion).catch(function () {});
       }

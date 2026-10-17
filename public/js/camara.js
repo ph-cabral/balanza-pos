@@ -90,6 +90,17 @@
     return 'https://' + location.host + location.pathname + location.search;
   }
 
+  // Si el equipo ya confia en el certificado del POS (CA instalada) va directo a
+  // https; si no, a la pagina que explica como instalarlo. El fetch 'no-cors'
+  // solo se resuelve si el navegador acepta el certificado.
+  function irASegura() {
+    var segura = urlSegura();
+    var base = 'https://' + location.host;
+    fetch(base + '/api/version?_=' + Date.now(), { mode: 'no-cors', cache: 'no-store' })
+      .then(function () { location.href = segura; })
+      .catch(function () { location.href = '/certificado.html?volver=' + encodeURIComponent(segura); });
+  }
+
   // ------------------------------------------------------------ detector
 
   function cargarScript(src) {
@@ -224,10 +235,9 @@
 
     if (!seguro()) {
       alError('Para usar la cámara hay que entrar por la dirección segura (https). ' +
-        'La primera vez el navegador avisa que la conexión no es privada: ' +
-        'tocá "Configuración avanzada" y "Continuar al sitio".', {
+        'Si es la primera vez en este equipo, te lleva a instalar el certificado del POS (una sola vez).', {
         texto: 'Ir a la versión segura',
-        fn: function () { location.href = urlSegura(); },
+        fn: irASegura,
       });
       return;
     }

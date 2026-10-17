@@ -326,7 +326,7 @@ async function partePantalla() {
     chequear('admin: escanear un código existente abre su ficha',
       (await pag.locator('#modalProducto').isVisible()) && (await titulo()) === 'Editando: Gaseosa prueba');
     chequear('con el precio listo para cambiar', (await foco()) === 'prodPrecio' &&
-      (await pag.locator('#prodPrecio').inputValue()) === '1500.00');
+      (await pag.locator('#prodPrecio').inputValue()) === '1.500');
     await pag.screenshot({ path: path.join(salida, 'estaciones-4-admin-escaneo-existe.png') });
 
     await api('POST', '/escaner/simular', { estacion: 'e1', codigo: '7791234567890' });

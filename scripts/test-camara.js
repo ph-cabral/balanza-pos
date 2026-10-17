@@ -10,9 +10,9 @@
  *   npm run test-camara
  *
  * Partes:
- *   1. Certificado propio (src/tls.js): valido, con las IP, se reutiliza.
+ *   1. Certificados (src/tls.js): CA propia + servidor firmado por ella, con las IP, se reutiliza, limites de la CA.
  *   2. Servidor: http y https en el mismo puerto, WebSocket por ws y wss,
- *      /api/red con las direcciones seguras, .wasm con su tipo.
+ *      /api/red con las direcciones seguras, /ca.crt, /certificado.html, .wasm con su tipo.
  *   3. Pantalla (si hay Playwright), en tamaño celular:
  *      - sin boton: mantener apretada la pantalla abre la camara (no con un
  *        toque, un arrastre ni en modo ordenar)
@@ -122,20 +122,54 @@ function videoConCodigo(ruta, codigo) {
 // ---------------------------------------------------------------- 1. certificado
 
 function parteCertificado(dir) {
-  console.log('\n1. Certificado propio');
+  console.log('\n1. Certificados (CA propia + servidor)');
   const tls = require('../src/tls');
   const carpeta = path.join(dir, 'tls-prueba');
   const a = tls.cargarOCrear(carpeta);
-  chequear('se genera la primera vez', a.nuevo && fs.existsSync(path.join(carpeta, 'pos.crt')));
+  chequear('se genera la primera vez (CA y servidor)', a.nuevo && a.nuevaCA &&
+    ['ca.key', 'ca.crt', 'ca.json', 'pos.key', 'pos.crt'].every((f) => fs.existsSync(path.join(carpeta, f))));
   const x = new crypto.X509Certificate(a.cert);
-  chequear('la firma es válida (autofirmado)', x.verify(x.publicKey));
+  const ca = new crypto.X509Certificate(a.ca);
+  chequear('la CA es autofirmada y CA:TRUE', ca.ca === true && ca.verify(ca.publicKey));
+  chequear('el servidor está firmado por la CA (no autofirmado)', x.verify(ca.publicKey) && !x.verify(x.publicKey) && x.checkIssued(ca));
+  chequear('el servidor no es CA', x.ca === false);
   chequear('cubre localhost y 127.0.0.1', !!x.checkHost('localhost') && !!x.checkIP('127.0.0.1'), x.subjectAltName);
   const ip = ipDeRed();
-  if (ip) chequear('cubre la IP de la red', !!x.checkIP(ip), ip);
+  if (ip && tls.ipPrivada(ip)) chequear('cubre la IP de la red', !!x.checkIP(ip), ip);
   const dias = (new Date(x.validTo) - Date.now()) / 86400000;
-  chequear('vence en menos de 825 días (límite de Safari)', dias > 700 && dias < 825, Math.round(dias));
+  chequear('servidor vence en menos de 825 días (límite de Safari)', dias > 700 && dias < 825, Math.round(dias));
   const b = tls.cargarOCrear(carpeta);
-  chequear('la segunda vez usa el mismo', !b.nuevo && String(b.cert) === String(a.cert));
+  chequear('la segunda vez usa el mismo', !b.nuevo && !b.nuevaCA && String(b.cert) === String(a.cert));
+
+  // La IP de la PC cambia: se reemite solo el servidor, la CA (ya instalada en los celulares) no.
+  const ips = ['192.168.77.5', '127.0.0.1'];
+  const c = tls.cargarOCrear(carpeta, { ips });
+  const xc = new crypto.X509Certificate(c.cert);
+  chequear('IP nueva: reemite el servidor con la misma CA', c.nuevo && !c.nuevaCA && String(c.ca) === String(a.ca) && !!xc.checkIP('192.168.77.5'));
+  chequear('IP nueva: la CA sigue firmando', xc.verify(ca.publicKey));
+  chequear('IP pública/virtual fuera de rango privado se ignora', !tls.ipPrivada('8.8.8.8') && !tls.ipPrivada('100.64.0.1') && tls.ipPrivada('172.20.1.1') && !tls.ipPrivada('172.32.0.1'));
+
+  // Certificado autofirmado de la version anterior: se reemplaza.
+  fs.writeFileSync(path.join(carpeta, 'ca.crt'), '');
+  const d = tls.cargarOCrear(carpeta, { ips });
+  chequear('CA ilegible: se crea una nueva', d.nuevaCA && String(d.ca) !== String(a.ca));
+
+  // La CA no puede firmar nada fuera de redes privadas / nombres permitidos (nameConstraints).
+  const caDisco = { key: fs.readFileSync(path.join(carpeta, 'ca.key')), cert: fs.readFileSync(path.join(carpeta, 'ca.crt')) };
+  const verifica = (hoja) => {
+    const f = path.join(carpeta, 'prueba-nc.crt');
+    fs.writeFileSync(f, hoja.cert);
+    try { require('child_process').execFileSync('openssl', ['verify', '-CAfile', path.join(carpeta, 'ca.crt'), f], { stdio: 'pipe' }); return true; }
+    catch (e) { return e.code === 'ENOENT' ? null : false; }
+  };
+  const bueno = verifica(tls.emitir({ ca: caDisco, ips: ['192.168.1.10'], nombres: ['localhost'] }));
+  if (bueno === null) {
+    console.log('  (openssl no está instalado: se omiten los chequeos de nameConstraints)');
+  } else {
+    chequear('openssl acepta un certificado para la red privada', bueno === true);
+    chequear('openssl rechaza un nombre de internet', verifica(tls.emitir({ ca: caDisco, nombres: ['www.google.com'] })) === false);
+    chequear('openssl rechaza una IP pública', verifica(tls.emitir({ ca: caDisco, ips: ['8.8.8.8'], nombres: ['localhost'] })) === false);
+  }
 }
 
 // ---------------------------------------------------------------- 2. servidor
@@ -160,6 +194,20 @@ async function parteServidor() {
   chequear('WebSocket por wss://', m2 && m2.tipo === 'estacion');
   const otra = await ws(`ws://localhost:${PUERTO}/otra`);
   chequear('otra ruta de WebSocket se rechaza', otra === null);
+
+  const rc = await fetch(URL + '/ca.crt');
+  const caTxt = await rc.text();
+  chequear('GET /ca.crt entrega la CA para instalar', rc.ok && /x509-ca-cert/.test(rc.headers.get('content-type') || '') &&
+    /attachment/.test(rc.headers.get('content-disposition') || '') && caTxt.includes('BEGIN CERTIFICATE') && !caTxt.includes('PRIVATE'));
+  const caX = new (require('crypto').X509Certificate)(caTxt);
+  chequear('esa CA es la que firma el https del POS', await new Promise((ok) => {
+    const rq = require('https').get({ host: 'localhost', port: PUERTO, path: '/api/estaciones', ca: caTxt }, (r) => { r.resume(); ok(r.statusCode === 200); });
+    rq.on('error', () => ok(false));
+  }) && caX.ca === true);
+  const rk = await fetch(URL + '/ca.key');
+  chequear('la clave de la CA no se sirve', !(await rk.text()).includes('PRIVATE'));
+  const rp = await fetch(URL + '/certificado.html');
+  chequear('/certificado.html explica la instalación', rp.ok && (await rp.text()).includes('/ca.crt'));
 
   const red = await api('GET', '/red');
   const ip = ipDeRed();

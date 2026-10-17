@@ -181,6 +181,17 @@ app.get('/api/config', (req, res) => {
 // quedaba con un index.html viejo y un pos.js nuevo (o al reves) y la pantalla
 // rompia. Son archivos chicos en red local; el ETag hace que la revalidacion
 // devuelva 304 y no pese nada.
+// CA propia de esta PC (publica): se instala una vez en cada celular/tablet para
+// que el navegador confie en https (ver public/certificado.html y src/tls.js).
+let caPem = null;
+app.get('/ca.crt', (_req, res) => {
+  if (!caPem) return res.status(404).type('text').send('HTTPS apagado en esta PC');
+  res.setHeader('Content-Type', 'application/x-x509-ca-cert');
+  res.setHeader('Content-Disposition', 'attachment; filename="balanza-pos-ca.crt"');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.send(caPem);
+});
+
 app.use(express.static(path.join(RAIZ, 'public'), {
   maxAge: 0,
   etag: true,
@@ -200,15 +211,17 @@ app.use((req, res) => {
 // direcciones que ya se usan, el mismo puerto atiende los dos: se mira el
 // primer byte de cada conexion (0x16 = saludo TLS) y se la pasa al servidor que
 // corresponde. http://IP:3000 sigue igual; https://IP:3000 es la version segura.
-// Certificado autofirmado propio de cada PC en data/tls/ (ver src/tls.js).
+// CA y certificado propios de cada PC en data/tls/ (ver src/tls.js).
 const servidorHttp = http.createServer(app);
 let servidorHttps = null;
 if (!config.http || config.http.https !== false) {
   try {
     const cert = tls.cargarOCrear(process.env.POS_TLS || path.join(process.env.POS_DATA || path.join(RAIZ, 'data'), 'tls'));
     servidorHttps = https.createServer({ key: cert.key, cert: cert.cert }, app);
+    caPem = cert.ca;
     servidorHttps.on('tlsClientError', () => { /* el navegador corto al ver el certificado: normal */ });
-    if (cert.nuevo) console.log('  HTTPS: se generó el certificado de esta PC (data/tls/)');
+    if (cert.nuevaCA) console.log('  HTTPS: se creó la CA de esta PC (data/tls/). Instalarla en celulares/tablets: http://IP:' + (config.http.port || 3000) + '/certificado.html');
+    else if (cert.nuevo) console.log('  HTTPS: se renovó el certificado de esta PC (data/tls/)');
   } catch (e) {
     console.warn(`  HTTPS apagado: ${e.message}`);
   }

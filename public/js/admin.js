@@ -48,6 +48,16 @@
   }
 
   /** Pesos con coma o punto -> centavos enteros. */
+  // Precio del producto: solo pesos enteros, con punto cada mil (12.500).
+  function formatearPrecio(texto) {
+    var d = String(texto).replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+    return d.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  }
+  function precioACentavos(texto) {
+    var d = String(texto).replace(/\D/g, '');
+    return d ? parseInt(d, 10) * 100 : 0;
+  }
+
   function aCentavos(texto) {
     var n = parseFloat(String(texto).replace(/\./g, '.').replace(',', '.'));
     if (!isFinite(n)) return 0;
@@ -672,7 +682,7 @@
     $('prodSabor').value = p.sabor || '';
     $('prodContenido').value = p.contenido || '';
     $('prodTipo').value = p.tipo;
-    $('prodPrecio').value = (p.precio_centavos / 100).toFixed(2);
+    $('prodPrecio').value = formatearPrecio(String(Math.round(p.precio_centavos / 100)));
     $('prodCodigo').value = p.codigo_barras || '';
     $('formTitulo').textContent = 'Editando: ' + p.nombre;
     $('btnGuardar').textContent = 'Guardar cambios';
@@ -711,6 +721,17 @@
   }
 
   $('prodTipo').addEventListener('change', actualizarLabelPrecio);
+
+  // Al escribir: separador de miles, sin decimales; el cursor queda tras el mismo
+  // dígito aunque se agreguen o quiten puntos.
+  $('prodPrecio').addEventListener('input', function () {
+    var el = this;
+    var digitosAntes = el.value.slice(0, el.selectionStart || 0).replace(/\D/g, '').length;
+    el.value = formatearPrecio(el.value);
+    var pos = 0, vistos = 0;
+    while (pos < el.value.length && vistos < digitosAntes) { if (/\d/.test(el.value[pos])) vistos++; pos++; }
+    try { el.setSelectionRange(pos, pos); } catch (e) {}
+  });
   $('filtroProductos').addEventListener('input', pintarTabla);
   $('verInactivos').addEventListener('change', function () { pintarChipsCategorias(); pintarTabla(); });
   $('btnCancelar').addEventListener('click', cerrarModalProducto);
@@ -734,7 +755,7 @@
       contenido: $('prodContenido').value,
       categoria_id: $('prodCategoria').value || null,
       tipo: $('prodTipo').value,
-      precio_centavos: aCentavos($('prodPrecio').value),
+      precio_centavos: precioACentavos($('prodPrecio').value),
       codigo_barras: $('prodCodigo').value,
       activo: 1,
     };
