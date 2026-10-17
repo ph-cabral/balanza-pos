@@ -1,9 +1,15 @@
+// Secretos: viven en Apps Script -> Configuración del proyecto -> Propiedades de script
+// (TELEGRAM_TOKEN, MAMMOUTH_KEY). No van en el código ni en git; clasp push no las pisa.
+function secreto_(clave) {
+  return PropertiesService.getScriptProperties().getProperty(clave) || "";
+}
+
 // ========================================
 // CONFIGURACIÓN GLOBAL
 // ========================================
 const CONFIG = {
   // Telegram
-  TELEGRAM_TOKEN: "7215963245:AAEDG4bAlDPXrZQQHMYO6J5EwufM9YEvd00",
+  TELEGRAM_TOKEN: secreto_("TELEGRAM_TOKEN"),
   TELEGRAM_API_BASE: "https://api.telegram.org",
   WEBAPP_URL:
     "https://script.google.com/macros/s/AKfycbxqesFQpEmKXpWbrGYXXjNP-zALbSvxz_WFSYNI65XvRkTO54S-0Vwx8OcqxIGl0fqH/exec",
@@ -14,7 +20,7 @@ const CONFIG = {
   TIMEZONE: "America/Argentina/Buenos_Aires",
 
   // Mammouth (OCR de facturas)
-  MAMMOUTH_KEY: "sk-RlVcd08wjzh91Hmt9rNgcA",
+  MAMMOUTH_KEY: secreto_("MAMMOUTH_KEY"),
   MAMMOUTH_API_URL: "https://api.mammouth.ai/v1/chat/completions",
   MAMMOUTH_MODEL: "gpt-4.1-nano",
 

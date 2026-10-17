@@ -1,12 +1,18 @@
 // Copia de ejemplo de config.gs SIN claves (config.gs real no se sube a git).
 // En el editor de Apps Script se usa config.gs con los valores verdaderos.
 
+// Secretos: viven en Apps Script -> Configuración del proyecto -> Propiedades de script
+// (TELEGRAM_TOKEN, MAMMOUTH_KEY). No van en el código ni en git; clasp push no las pisa.
+function secreto_(clave) {
+  return PropertiesService.getScriptProperties().getProperty(clave) || "";
+}
+
 // ========================================
 // CONFIGURACIÓN GLOBAL
 // ========================================
 const CONFIG = {
   // Telegram
-  TELEGRAM_TOKEN: "PEGAR_TOKEN_DEL_BOT",
+  TELEGRAM_TOKEN: secreto_("TELEGRAM_TOKEN"),
   TELEGRAM_API_BASE: "https://api.telegram.org",
   WEBAPP_URL:
     "https://script.google.com/macros/s/AKfycbz0ErVvf3UJkqOdQfXyfSO5s8aMnAGlqK22zh3OcGnIDlMBamx4dcFsiCwFoFEYyzMC/exec",
@@ -22,7 +28,7 @@ const CONFIG = {
   POS_TOKEN: "MISMA_CLAVE_QUE_config.json_sheets.token",
 
   // Mammouth (OCR de facturas)
-  MAMMOUTH_KEY: "PEGAR_CLAVE_DE_MAMMOUTH",
+  MAMMOUTH_KEY: secreto_("MAMMOUTH_KEY"),
   MAMMOUTH_API_URL: "https://api.mammouth.ai/v1/chat/completions",
   MAMMOUTH_MODEL: "gpt-4.1-nano",
 
