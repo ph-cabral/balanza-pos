@@ -619,6 +619,33 @@
     return mg.marcas.length > 1 || (mg.marcas.length === 1 && mg.sueltos.length > 0);
   }
 
+  // Orden de la vista POR DISPOSITIVO: lo que se acomoda en esta tablet/celular/PC
+  // se guarda en el navegador de ese equipo y no cambia el de los demas. El orden
+  // del servidor (el de siempre) queda como punto de partida de los equipos que
+  // todavia no acomodaron esa pantalla.
+  var CLAVE_ORDEN = 'pos.orden.v1';
+
+  function leerOrdenLocal() {
+    try {
+      var o = JSON.parse(localStorage.getItem(CLAVE_ORDEN) || '{}');
+      return o && typeof o === 'object' ? o : {};
+    } catch (e) { return {}; }
+  }
+
+  function ordenConLocal(servidor) {
+    var loc = leerOrdenLocal(), out = {}, k;
+    for (k in servidor) out[k] = servidor[k];
+    for (k in loc) out[k] = loc[k];    // la pantalla acomodada en este equipo manda
+    return out;
+  }
+
+  function guardarOrdenLocal(ambito, mapa) {
+    var loc = leerOrdenLocal();
+    loc[ambito] = mapa;
+    try { localStorage.setItem(CLAVE_ORDEN, JSON.stringify(loc)); }
+    catch (e) { avisar('Este equipo no puede guardar el orden (almacenamiento bloqueado)', 'atencion'); }
+  }
+
   /** Acomoda `lista` segun el orden guardado de `ambito`; lo no acomodado queda al final, como venia. */
   function ordenarPor(lista, ambito, claveDe) {
     var m = ambito && estado.orden[ambito];
@@ -713,7 +740,7 @@
         if (!d.ok) throw new Error(d.error);
         estado.productos = d.productos;
         estado.grupos = d.categorias || [];
-        estado.orden = d.orden || {};
+        estado.orden = ordenConLocal(d.orden || {});
         // Si el grupo que estaba abierto se dio de baja, volvemos a la base.
         if (estado.grupoId && !grupoPorId(estado.grupoId)) {
           estado.grupoId = null;
@@ -1116,21 +1143,8 @@
     });
     if (!ids.length) return;
 
-    // Hay productos en el inicio: el orden mezclado (grupos + productos) se guarda aparte.
-    if (claves.length > ids.length) enviarOrdenVista('i', claves);
-
-    // Ordenamos tambien el estado local: la tablet ya muestra el orden nuevo y
-    // no depende de la respuesta del servidor para seguir vendiendo.
-    estado.grupos.sort(function (a, b) { return ids.indexOf(a.id) - ids.indexOf(b.id); });
-
-    fetch('/api/categorias/orden', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: ids }),
-    })
-      .then(function (r) { return r.json(); })
-      .then(function (d) { if (!d.ok) throw new Error(d.error); })
-      .catch(function (e) { avisar('No se pudo guardar el orden: ' + e.message, 'error'); });
+    // Grupos (y productos sueltos en el inicio) en un solo orden, solo de este equipo.
+    enviarOrdenVista('i', claves);
   }
 
   /** Orden de las marcas/sueltos de un grupo o de los productos de una marca (todo el ambito de una vez). */
@@ -1150,15 +1164,7 @@
     var mapa = {};
     claves.forEach(function (c, i) { mapa[c] = i + 1; });
     estado.orden[ambito] = mapa;
-
-    fetch('/api/orden-vista', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ambito: ambito, claves: claves }),
-    })
-      .then(function (r) { return r.json(); })
-      .then(function (d) { if (!d.ok) throw new Error(d.error); })
-      .catch(function (e) { avisar('No se pudo guardar el orden: ' + e.message, 'error'); });
+    guardarOrdenLocal(ambito, mapa);
   }
 
   // ---------------------------------------------------------------- carrito
