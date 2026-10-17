@@ -168,10 +168,12 @@ function chequear(desc, cond, detalle) {
     await pagina.reload({ waitUntil: 'networkidle' });
     await esperar(700);
     const ordenGuardado = await pagina.locator('.grupo-nombre').allTextContents();
-    chequear('el orden queda guardado en el servidor',
+    chequear('el orden queda guardado en el equipo',
       ordenGuardado.join() === ordenDespues.join(), ordenGuardado.join(' · '));
 
-    // Lo dejamos como estaba, para no ensuciar la configuración real.
+    // Lo dejamos como estaba, para no ensuciar la configuración real: el orden
+    // vive en el equipo (localStorage) y se descarta; el del servidor se repone.
+    await pagina.evaluate(() => { try { localStorage.removeItem('pos.orden.v1'); } catch (_) {} });
     await pagina.evaluate(async (nombres) => {
       const r = await fetch('/api/categorias').then((x) => x.json());
       const ids = nombres.map((n) => (r.categorias.find((c) => c.nombre === n) || {}).id).filter(Boolean);
